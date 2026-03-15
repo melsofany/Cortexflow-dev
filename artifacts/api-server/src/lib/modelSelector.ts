@@ -63,13 +63,13 @@ interface ModelProfile {
 const MODEL_PROFILES: ModelProfile[] = [
   {
     name: "qwen2:0.5b",
-    strengths: ["simple", "translation", "browser"],
+    strengths: ["simple", "translation"],
     speed: "fast",
     size: 352,
   },
   {
     name: "qwen2.5:0.5b",
-    strengths: ["simple", "translation", "browser", "code"],
+    strengths: ["simple", "translation"],
     speed: "fast",
     size: 397,
   },

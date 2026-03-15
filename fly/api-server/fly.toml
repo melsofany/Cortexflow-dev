@@ -1,0 +1,37 @@
+# CortexFlow - API Server
+app = "cortexflow-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "fly/api-server/Dockerfile"
+  ignorefile = ".dockerignore"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+  OLLAMA_URL = "http://cortexflow-ollama.internal:11434"
+  AGENT_SERVICE_URL = "http://cortexflow-agent.internal:8090"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "30s"
+    method = "GET"
+    path = "/api/healthz"
+    timeout = "10s"
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 2
+
+[mounts]
+  source = "cortexflow_api_data"
+  destination = "/app/data"

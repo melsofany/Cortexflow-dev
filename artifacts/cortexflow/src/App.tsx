@@ -506,14 +506,28 @@ const App: React.FC = () => {
       return [...p, { id: uid(), type: 'thinking', text, timestamp: new Date(), step }];
     }), []);
 
+  // ── Auto-classify task type from description ────────────────────────────
+  const autoClassifyType = useCallback((text: string): string => {
+    const t = text.toLowerCase();
+    const browserKw = ['افتح','تصفح','انتقل','موقع','اذهب','سجل','تسجيل','facebook','twitter','instagram','youtube','google','يوتيوب','ويب','web','url','http','احجز','اشتر'];
+    const codeKw    = ['اكتب كود','برمجة','كود','script','python','javascript','برنامج','function','api','class','debug','typescript','sql','ابرمج'];
+    const researchKw= ['ابحث','اشرح','ما هو','ما هي','كيف','لماذا','معلومات','تحليل','قارن','تقرير','ملخص','explain','research','analyze'];
+
+    if (browserKw.some(k => t.includes(k))) return 'browser';
+    if (codeKw.some(k => t.includes(k)))    return 'system';
+    if (researchKw.some(k => t.includes(k))) return 'research';
+    return 'ai';
+  }, []);
+
   // ── Submit ──────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(() => {
     const text = inputValue.trim();
     if (!text || !socketRef.current || !isConnected) return;
     setMessages(p => [...p, { id: uid(), type: 'user', text, timestamp: new Date() }]);
-    socketRef.current.emit('submitTask', { description: text, type: 'browser', priority: 'normal' });
+    const taskType = autoClassifyType(text);
+    socketRef.current.emit('submitTask', { description: text, type: taskType, priority: 'normal' });
     setInputValue('');
-  }, [inputValue, isConnected]);
+  }, [inputValue, isConnected, autoClassifyType]);
 
   // ── Socket.io ───────────────────────────────────────────────────────────
   useEffect(() => {

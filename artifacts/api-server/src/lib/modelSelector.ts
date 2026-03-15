@@ -8,9 +8,66 @@ export type TaskCategory =
   | "math"        // حسابات، رياضيات
   | "translation" // ترجمة
   | "reasoning"   // تفكير منطقي معقد
+  | "file"        // عمليات ملفات
+  | "agent"       // مهام متعددة الخطوات
   | "simple";     // مهام قصيرة بسيطة
 
-// ── Keyword maps for task classification ─────────────────────────────────────
+// ── نظام الذاكرة والتحسين الذاتي ─────────────────────────────────────────────
+
+interface ModelPerformance {
+  successes: number;
+  failures: number;
+  avgDuration: number;
+  lastUsed: Date;
+  qualityScore: number;
+}
+
+class SelfImprovingModelSelector {
+  private performanceHistory: Map<string, Map<string, ModelPerformance>> = new Map();
+  private taskHistory: Array<{model: string; category: string; success: boolean; duration: number}> = [];
+
+  recordResult(model: string, category: string, success: boolean, duration: number, quality = 0.5) {
+    if (!this.performanceHistory.has(model)) {
+      this.performanceHistory.set(model, new Map());
+    }
+    const modelMap = this.performanceHistory.get(model)!;
+    const current = modelMap.get(category) || { successes: 0, failures: 0, avgDuration: 0, lastUsed: new Date(), qualityScore: 0.5 };
+
+    if (success) current.successes++;
+    else current.failures++;
+
+    const alpha = 0.3;
+    current.avgDuration = current.avgDuration * (1 - alpha) + duration * alpha;
+    current.qualityScore = current.qualityScore * (1 - alpha) + quality * alpha;
+    current.lastUsed = new Date();
+
+    modelMap.set(category, current);
+
+    this.taskHistory.push({ model, category, success, duration });
+    if (this.taskHistory.length > 200) {
+      this.taskHistory = this.taskHistory.slice(-200);
+    }
+  }
+
+  getLearnedScore(model: string, category: string): number {
+    const perf = this.performanceHistory.get(model)?.get(category);
+    if (!perf) return 0.5;
+    const total = perf.successes + perf.failures;
+    if (total < 2) return 0.5;
+    return (perf.successes / total) * 0.7 + perf.qualityScore * 0.3;
+  }
+
+  getSelfImprovementReport(): string {
+    if (this.taskHistory.length === 0) return "لم يتم تنفيذ مهام بعد.";
+    const successes = this.taskHistory.filter(t => t.success).length;
+    const rate = Math.round((successes / this.taskHistory.length) * 100);
+    return `معدل النجاح: ${rate}% من ${this.taskHistory.length} مهمة`;
+  }
+}
+
+export const modelSelector = new SelfImprovingModelSelector();
+
+// ── قواميس الكلمات المفتاحية ──────────────────────────────────────────────
 
 const CATEGORY_KEYWORDS: Record<TaskCategory, string[]> = {
   browser: [
@@ -23,91 +80,117 @@ const CATEGORY_KEYWORDS: Record<TaskCategory, string[]> = {
     "اكتب كود", "برمجة", "كود", "script", "python", "javascript", "برنامج",
     "function", "api", "class", "اكتب برنامج", "طوّر", "أنشئ تطبيق",
     "debug", "خطأ برمجي", "typescript", "sql", "database", "سكريبت",
+    "ابرمج", "اكتب دالة", "أصلح الكود",
   ],
   research: [
     "ابحث", "اشرح", "ما هو", "ما هي", "كيف", "لماذا", "متى", "أين",
     "معلومات", "تفاصيل", "تحليل", "قارن", "مقارنة", "دراسة", "بيانات",
     "إحصاء", "تقرير", "ملخص", "explain", "research", "analyze", "summary",
+    "وضّح", "عرّف", "فسّر",
   ],
   creative: [
     "اكتب", "قصة", "مقال", "قصيدة", "محتوى", "نص", "وصف", "إعلان",
     "creative", "write", "story", "article", "blog", "post", "منشور",
-    "حوار", "سكريبت إبداعي", "أسلوب", "أنشئ محتوى",
+    "حوار", "سكريبت إبداعي", "أسلوب", "أنشئ محتوى", "خطاب", "رسالة",
   ],
   math: [
     "احسب", "حساب", "معادلة", "رياضيات", "جمع", "طرح", "ضرب", "قسمة",
     "calculate", "math", "equation", "formula", "percentage", "نسبة مئوية",
-    "integral", "derivative", "statistics", "إحصاء رياضي",
+    "integral", "derivative", "statistics", "إحصاء رياضي", "جذر", "قوة",
+    "ناتج", "ضاحيل", "لوغاريتم",
   ],
   translation: [
     "ترجم", "translation", "translate", "بالعربية", "بالإنجليزية",
     "بالفرنسية", "اللغة", "language", "من العربي", "إلى الإنجليزي",
+    "ترجمة", "انقل إلى",
   ],
   reasoning: [
     "فكّر", "استنتج", "هل يمكن", "ما الأفضل", "قيّم", "تقييم", "قرار",
     "خطة استراتيجية", "توصية", "نصيحة", "scenario", "افتراضي", "لو",
-    "إذا كان", "ماذا سيحدث", "مقارنة معقدة", "تحليل عميق",
+    "إذا كان", "ماذا سيحدث", "مقارنة معقدة", "تحليل عميق", "منطق",
+    "استنتاج", "قارن بين",
   ],
-  simple: [], // default fallback
+  file: [
+    "اقرأ ملف", "اكتب ملف", "احفظ", "قراءة", "كتابة", "ملف", "file",
+    "directory", "مجلد", "path", "json", "csv", "txt", "read file",
+  ],
+  agent: [
+    "خطط", "نفّذ سلسلة", "أنجز", "حقق هدف", "وكيل", "agent",
+    "متعدد الخطوات", "خطة متكاملة", "مشروع", "سلسلة من الإجراءات",
+  ],
+  simple: [],
 };
 
-// ── Model profiles ─────────────────────────────────────────────────────────
+// ── ملفات تعريف النماذج ──────────────────────────────────────────────────────
 
 interface ModelProfile {
   name: string;
   strengths: TaskCategory[];
   speed: "fast" | "medium" | "slow";
-  size: number; // MB approx
+  size: number;
+  baseScores: Partial<Record<TaskCategory, number>>;
 }
 
 const MODEL_PROFILES: ModelProfile[] = [
   {
     name: "qwen2:0.5b",
     strengths: ["simple", "translation"],
-    speed: "fast",
-    size: 352,
+    speed: "fast", size: 352,
+    baseScores: { simple: 0.9, translation: 0.8, code: 0.4, research: 0.4, math: 0.4 },
   },
   {
     name: "qwen2.5:0.5b",
     strengths: ["simple", "translation"],
-    speed: "fast",
-    size: 397,
+    speed: "fast", size: 397,
+    baseScores: { simple: 0.9, translation: 0.8, code: 0.5, research: 0.4, math: 0.5 },
   },
   {
     name: "llama3.2:1b",
-    strengths: ["research", "creative", "reasoning", "math", "code", "browser"],
-    speed: "medium",
-    size: 1300,
+    strengths: ["research", "creative", "reasoning", "code", "browser", "agent"],
+    speed: "medium", size: 1300,
+    baseScores: { browser: 0.7, code: 0.7, research: 0.7, creative: 0.7, math: 0.6, translation: 0.6, reasoning: 0.7, agent: 0.7 },
   },
   {
     name: "llama3.2:3b",
-    strengths: ["research", "creative", "reasoning", "math", "code"],
-    speed: "medium",
-    size: 2000,
+    strengths: ["research", "creative", "reasoning", "code", "browser", "agent", "math"],
+    speed: "medium", size: 2000,
+    baseScores: { browser: 0.8, code: 0.8, research: 0.8, creative: 0.8, math: 0.7, translation: 0.7, reasoning: 0.8, agent: 0.8 },
   },
   {
     name: "mistral:7b-instruct-q2_K",
-    strengths: ["research", "creative", "reasoning", "math", "code", "translation"],
-    speed: "slow",
-    size: 3000,
+    strengths: ["research", "creative", "reasoning", "code", "translation", "math", "agent"],
+    speed: "slow", size: 3000,
+    baseScores: { code: 0.9, research: 0.9, reasoning: 0.9, math: 0.9, translation: 0.8, creative: 0.8, agent: 0.9 },
   },
   {
     name: "mistral:latest",
-    strengths: ["research", "creative", "reasoning", "math", "code", "translation"],
-    speed: "slow",
-    size: 4100,
+    strengths: ["research", "creative", "reasoning", "code", "translation", "math", "agent"],
+    speed: "slow", size: 4100,
+    baseScores: { code: 0.9, research: 0.9, reasoning: 0.9, math: 0.9, translation: 0.8, creative: 0.8, agent: 0.9 },
+  },
+  {
+    name: "phi3:mini",
+    strengths: ["code", "math", "reasoning"],
+    speed: "medium", size: 2300,
+    baseScores: { code: 0.8, math: 0.9, reasoning: 0.8, research: 0.8, creative: 0.7 },
+  },
+  {
+    name: "gemma2:2b",
+    strengths: ["creative", "research", "reasoning"],
+    speed: "medium", size: 1600,
+    baseScores: { creative: 0.8, research: 0.8, reasoning: 0.7, code: 0.7, translation: 0.7 },
   },
 ];
 
-// ── Core selection logic ───────────────────────────────────────────────────
+// ── منطق التصنيف والاختيار ─────────────────────────────────────────────────
 
 export function classifyTask(description: string, taskType?: string): TaskCategory {
-  if (taskType === "browser") return "browser";
+  if (taskType && taskType !== "general") return taskType as TaskCategory;
 
   const text = description.toLowerCase();
   const scores: Record<TaskCategory, number> = {
-    browser: 0, code: 0, research: 0, creative: 0,
-    math: 0, translation: 0, reasoning: 0, simple: 0,
+    browser: 0, code: 0, research: 0, creative: 0, math: 0,
+    translation: 0, reasoning: 0, file: 0, agent: 0, simple: 0,
   };
 
   for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS) as [TaskCategory, string[]][]) {
@@ -118,7 +201,6 @@ export function classifyTask(description: string, taskType?: string): TaskCatego
     }
   }
 
-  // Bias toward simple if the task is very short
   if (description.trim().split(/\s+/).length <= 5) {
     scores.simple += 2;
   }
@@ -129,6 +211,7 @@ export function classifyTask(description: string, taskType?: string): TaskCatego
   return best[1] > 0 ? best[0] : "simple";
 }
 
+
 export async function selectBestModel(
   description: string,
   taskType?: string,
@@ -136,7 +219,6 @@ export async function selectBestModel(
 ): Promise<{ model: string; category: TaskCategory; reason: string }> {
   const category = classifyTask(description, taskType);
 
-  // Get available models if not provided
   if (!availableModels) {
     try {
       const res = await axios.get("http://localhost:11434/api/tags", { timeout: 3000 });
@@ -147,50 +229,54 @@ export async function selectBestModel(
   }
 
   if (availableModels.length === 0) {
-    return { model: "qwen2:0.5b", category, reason: "لا يوجد نماذج مثبتة — استخدام الافتراضي" };
+    return { model: "qwen2:0.5b", category, reason: "لا يوجد نماذج مثبتة — تحقق من Ollama" };
   }
 
-  // Find the best profile that matches category AND is installed
   const installedProfiles = MODEL_PROFILES.filter(p => availableModels!.includes(p.name));
 
+  // إذا لم يكن أي نموذج معروف، استخدم الأول المتاح
   if (installedProfiles.length === 0) {
     return { model: availableModels[0], category, reason: "استخدام أول نموذج متاح" };
   }
 
-  // Score each installed model: +3 if category in strengths, +1 per strength match
+  // حساب نقطة مركبة: أساسية + مكتسبة
   const scored = installedProfiles.map(p => {
-    let score = 0;
-    if (p.strengths.includes(category)) score += 3;
-    // For simple tasks, prefer faster models
+    const baseScore = p.baseScores[category] ?? 0.5;
+    const learnedScore = modelSelector.getLearnedScore(p.name, category);
+    const combined = baseScore * 0.6 + learnedScore * 0.4;
+
+    // تفضيل النماذج الأسرع للمهام البسيطة
+    let speedBonus = 0;
     if (category === "simple" || category === "browser") {
-      if (p.speed === "fast") score += 2;
-      else if (p.speed === "medium") score += 1;
+      speedBonus = p.speed === "fast" ? 0.1 : p.speed === "medium" ? 0.05 : 0;
     } else {
-      // For complex tasks, prefer larger models
-      if (p.speed === "slow") score += 1;
-      else if (p.speed === "medium") score += 0.5;
+      // تفضيل النماذج الأكبر للمهام المعقدة
+      speedBonus = p.speed === "slow" ? 0.05 : 0;
     }
-    return { profile: p, score };
+
+    return { profile: p, score: combined + speedBonus };
   });
 
   scored.sort((a, b) => b.score - a.score);
   const winner = scored[0].profile;
 
   const reasonMap: Record<TaskCategory, string> = {
-    browser:     "مهمة تصفح ويب — نموذج سريع للتنقل والتفاعل",
+    browser:     "مهمة تصفح ويب — نموذج سريع ومتفاعل",
     code:        "مهمة برمجية — نموذج متخصص في الكود",
     research:    "مهمة بحثية — نموذج ذو قدرة تحليلية عالية",
     creative:    "مهمة إبداعية — نموذج ذو قدرة توليدية قوية",
-    math:        "مهمة رياضية — نموذج ذو منطق عددي دقيق",
+    math:        "مهمة رياضية — نموذج ذو دقة عددية عالية",
     translation: "مهمة ترجمة — نموذج متعدد اللغات",
-    reasoning:   "مهمة تفكير معقدة — أقوى نموذج متاح",
+    reasoning:   "تفكير معقد — أقوى نموذج متاح",
+    file:        "عمليات ملفات — نموذج يدعم البيانات",
+    agent:       "مهمة متعددة الخطوات — نموذج تخطيطي قوي",
     simple:      "مهمة بسيطة — نموذج سريع وكافٍ",
   };
 
   return {
     model: winner.name,
     category,
-    reason: reasonMap[category],
+    reason: `${reasonMap[category]} | نقطة: ${scored[0].score.toFixed(2)} | ${modelSelector.getSelfImprovementReport()}`,
   };
 }
 
@@ -203,6 +289,8 @@ export function formatModelSelection(model: string, category: TaskCategory, reas
     math:        "🔢 رياضيات",
     translation: "🌍 ترجمة",
     reasoning:   "🧠 تفكير معقد",
+    file:        "📁 ملفات",
+    agent:       "🤖 وكيل متعدد الخطوات",
     simple:      "⚡ سريعة",
   };
   return `تصنيف المهمة: ${categoryAr[category]}\nالنموذج المختار: ${model}\nالسبب: ${reason}`;

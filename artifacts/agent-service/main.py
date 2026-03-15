@@ -1,25 +1,33 @@
 """
-CortexFlow Agent Service — Python Backend
+CortexFlow Agent Service — نظام وكيل ذكاء اصطناعي متكامل
+=========================================================
 
-Integrates four open-source repositories:
-  1. LangGraph    (langchain-ai/langgraph)       — multi-node agent graph
-  2. AutoGPT      (Significant-Gravitas/AutoGPT)  — iterative goal-seeking agent
-  3. Open Interpreter (OpenInterpreter/open-interpreter) — code execution agent
-  4. Mistral AI   (mistralai)                     — via Ollama local inference
+نظام احترافي يشمل:
+  1. توجيه ذكي للنماذج بحسب نوع المهمة
+  2. تنفيذ متعدد المراحل (OODA Loop)
+  3. ذاكرة ذاتية وتحسين مستمر
+  4. نظام أدوات متكامل (كود، بحث، ملفات، رياضيات)
+  5. تقييم ذاتي وتكيّف استراتيجي
 """
 
 import os
 import json
 import asyncio
+import subprocess
+import tempfile
+import math
+import re
+import time
 import httpx
+from datetime import datetime
 from typing import TypedDict, Annotated, Sequence, Any
+from collections import defaultdict
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 
-# ── LangGraph & LangChain ─────────────────────────────────────────────────────
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
@@ -27,7 +35,7 @@ from langgraph.graph.message import add_messages
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 PORT       = int(os.getenv("AGENT_SERVICE_PORT", "8090"))
 
-app = FastAPI(title="CortexFlow Agent Service — Multi-Repo Integration")
+app = FastAPI(title="CortexFlow Agent Service — Professional AI System")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -35,60 +43,166 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Provider Registry ─────────────────────────────────────────────────────────
-PROVIDER_MODELS = {
-    "QwenLM":          ["qwen2:0.5b", "qwen2.5:0.5b", "qwen2:1.5b"],
-    "meta-llama":      ["llama3.2:1b", "llama3.2:3b", "llama3:8b"],
-    "mistralai":       ["mistral:7b-instruct-q2_K", "mistral:latest", "mistral:7b"],
-    "AutoGPT":         ["llama3.2:1b", "qwen2:0.5b"],
-    "LangGraph":       ["llama3.2:1b", "qwen2:0.5b"],
-    "OpenInterpreter": ["llama3.2:1b", "qwen2:0.5b"],
-}
+# ══════════════════════════════════════════════════════════════════════════════
+#  نظام الذاكرة والتحسين الذاتي
+# ══════════════════════════════════════════════════════════════════════════════
 
-# ── Task Classification ───────────────────────────────────────────────────────
+class PerformanceMemory:
+    """
+    يتتبع أداء كل نموذج على كل نوع مهمة
+    ويضبط الأوزان تلقائياً بناءً على النتائج
+    """
+    def __init__(self):
+        self.model_scores: dict[str, dict[str, float]] = {}
+        self.task_history: list[dict] = []
+        self.strategy_adjustments: dict[str, str] = {}
+        self.total_tasks = 0
+        self.successful_tasks = 0
+
+    def record_result(self, model: str, category: str, success: bool, duration: float, quality_score: float = 0.5):
+        if model not in self.model_scores:
+            self.model_scores[model] = {}
+        
+        key = category
+        current = self.model_scores[model].get(key, 0.5)
+        # التعلم التدريجي: تحديث النقطة بشكل تدريجي
+        alpha = 0.3
+        new_score = current * (1 - alpha) + (quality_score if success else 0.1) * alpha
+        self.model_scores[model][key] = new_score
+        
+        self.task_history.append({
+            "model": model,
+            "category": category,
+            "success": success,
+            "duration": duration,
+            "quality": quality_score,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        self.total_tasks += 1
+        if success:
+            self.successful_tasks += 1
+        
+        # احتفظ فقط بآخر 100 مهمة
+        if len(self.task_history) > 100:
+            self.task_history = self.task_history[-100:]
+
+    def get_model_score(self, model: str, category: str) -> float:
+        return self.model_scores.get(model, {}).get(category, 0.5)
+
+    def get_stats(self) -> dict:
+        success_rate = (self.successful_tasks / self.total_tasks * 100) if self.total_tasks > 0 else 0
+        return {
+            "total_tasks": self.total_tasks,
+            "successful_tasks": self.successful_tasks,
+            "success_rate": round(success_rate, 1),
+            "model_performance": self.model_scores,
+            "recent_tasks": self.task_history[-5:]
+        }
+
+    def generate_self_improvement_report(self) -> str:
+        if not self.task_history:
+            return "لم يتم تنفيذ أي مهام بعد."
+        
+        stats = self.get_stats()
+        weak_areas = []
+        strong_areas = []
+        
+        for model, cats in self.model_scores.items():
+            for cat, score in cats.items():
+                if score < 0.4:
+                    weak_areas.append(f"{model} على {cat}: {score:.2f}")
+                elif score > 0.7:
+                    strong_areas.append(f"{model} على {cat}: {score:.2f}")
+        
+        report = f"""
+=== تقرير التحسين الذاتي ===
+معدل النجاح الإجمالي: {stats['success_rate']}%
+المهام المنجزة: {stats['total_tasks']}
+
+نقاط القوة:
+{chr(10).join(strong_areas[:5]) if strong_areas else 'لا توجد بيانات كافية'}
+
+مجالات تحتاج تحسيناً:
+{chr(10).join(weak_areas[:5]) if weak_areas else 'الأداء متوازن'}
+"""
+        return report.strip()
+
+
+# مثيل عالمي للذاكرة
+memory = PerformanceMemory()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  تصنيف المهام والنماذج
+# ══════════════════════════════════════════════════════════════════════════════
+
 TASK_KEYWORDS = {
     "browser": [
-        "افتح","تصفح","انتقل","موقع","اذهب","سجل","تسجيل","حساب",
-        "facebook","twitter","instagram","youtube","google","فيسبوك",
-        "تويتر","انستجرام","يوتيوب","جوجل","ويب","web","url","http",
-        "قم بانشاء","انشئ حساب","سجل دخول","اشتر","احجز",
+        "افتح","تصفح","انتقل","موقع","اذهب","سجل","تسجيل",
+        "facebook","twitter","instagram","youtube","google","يوتيوب",
+        "ويب","web","url","http","احجز","اشتر",
     ],
     "code": [
         "اكتب كود","برمجة","كود","script","python","javascript","برنامج",
-        "function","api","class","اكتب برنامج","debug","typescript","sql",
-        "اكتب سكريبت","أنشئ تطبيق","طوّر","ابرمج",
+        "function","api","class","debug","typescript","sql","سكريبت",
+        "أنشئ تطبيق","طوّر","ابرمج","اكتب دالة","اكتب برنامج",
     ],
     "research": [
         "ابحث","اشرح","ما هو","ما هي","كيف","لماذا","متى","أين",
         "معلومات","تحليل","قارن","مقارنة","دراسة","تقرير","ملخص",
-        "explain","research","analyze","summary","وضّح","عرّف",
+        "explain","research","analyze","summary","وضّح","عرّف","فسّر",
     ],
     "creative": [
         "اكتب","قصة","مقال","قصيدة","محتوى","نص","وصف","إعلان",
         "write","story","article","blog","منشور","خطاب","رسالة",
+        "أنشئ محتوى","حوار","سيناريو","نشيد",
     ],
     "math": [
         "احسب","حساب","معادلة","رياضيات","calculate","math","equation",
         "formula","percentage","نسبة","ناتج","جمع","طرح","ضرب","قسمة",
+        "integral","derivative","statistics","جذر","قوة","لوغاريتم",
     ],
     "translation": [
         "ترجم","translation","translate","بالعربية","بالإنجليزية","اللغة",
-        "ترجمة","انقل إلى",
+        "ترجمة","انقل إلى","من العربي","إلى الإنجليزي","بالفرنسية",
     ],
     "reasoning": [
         "فكّر","استنتج","هل يمكن","ما الأفضل","قيّم","تقييم","قرار",
-        "توصية","نصيحة","scenario","تحليل عميق","منطق",
+        "توصية","نصيحة","scenario","تحليل عميق","منطق","استنتج",
+        "خطة استراتيجية","ماذا يحدث لو","قارن بين",
+    ],
+    "file": [
+        "اقرأ ملف","اكتب ملف","احفظ","قراءة","كتابة","ملف","file",
+        "directory","مجلد","path","json","csv","txt",
+    ],
+    "agent": [
+        "خطط","نفّذ سلسلة","أنجز","حقق هدف","وكيل","agent",
+        "متعدد الخطوات","خطة متكاملة","مشروع",
     ],
     "simple": [],
 }
 
-MODEL_SCORES: dict[str, dict[str, int]] = {
-    "qwen2:0.5b":               {"browser":1,"code":1,"research":1,"creative":1,"math":1,"translation":3,"reasoning":1,"simple":3},
-    "qwen2.5:0.5b":             {"browser":1,"code":2,"research":1,"creative":1,"math":1,"translation":3,"reasoning":1,"simple":3},
-    "llama3.2:1b":              {"browser":3,"code":3,"research":3,"creative":3,"math":2,"translation":2,"reasoning":3,"simple":2},
-    "llama3.2:3b":              {"browser":3,"code":3,"research":3,"creative":3,"math":3,"translation":2,"reasoning":3,"simple":2},
-    "mistral:7b-instruct-q2_K": {"browser":1,"code":3,"research":3,"creative":3,"math":3,"translation":3,"reasoning":3,"simple":1},
-    "mistral:latest":           {"browser":1,"code":3,"research":3,"creative":3,"math":3,"translation":3,"reasoning":3,"simple":1},
+MODEL_BASE_SCORES: dict[str, dict[str, float]] = {
+    "qwen2:0.5b":               {"browser":0.3,"code":0.4,"research":0.4,"creative":0.4,"math":0.4,"translation":0.8,"reasoning":0.3,"file":0.5,"agent":0.3,"simple":0.9},
+    "qwen2.5:0.5b":             {"browser":0.3,"code":0.5,"research":0.4,"creative":0.4,"math":0.5,"translation":0.8,"reasoning":0.4,"file":0.5,"agent":0.3,"simple":0.9},
+    "llama3.2:1b":              {"browser":0.7,"code":0.7,"research":0.7,"creative":0.7,"math":0.6,"translation":0.6,"reasoning":0.7,"file":0.7,"agent":0.7,"simple":0.6},
+    "llama3.2:3b":              {"browser":0.8,"code":0.8,"research":0.8,"creative":0.8,"math":0.7,"translation":0.7,"reasoning":0.8,"file":0.8,"agent":0.8,"simple":0.6},
+    "mistral:7b-instruct-q2_K": {"browser":0.5,"code":0.9,"research":0.9,"creative":0.8,"math":0.9,"translation":0.8,"reasoning":0.9,"file":0.8,"agent":0.9,"simple":0.4},
+    "mistral:latest":           {"browser":0.5,"code":0.9,"research":0.9,"creative":0.8,"math":0.9,"translation":0.8,"reasoning":0.9,"file":0.8,"agent":0.9,"simple":0.4},
+    "phi3:mini":                {"browser":0.5,"code":0.8,"research":0.8,"creative":0.7,"math":0.9,"translation":0.6,"reasoning":0.8,"file":0.7,"agent":0.7,"simple":0.5},
+    "gemma2:2b":                {"browser":0.6,"code":0.7,"research":0.8,"creative":0.8,"math":0.7,"translation":0.7,"reasoning":0.7,"file":0.7,"agent":0.7,"simple":0.6},
+}
+
+PROVIDER_MODELS = {
+    "QwenLM":          ["qwen2:0.5b", "qwen2.5:0.5b", "qwen2:1.5b"],
+    "meta-llama":      ["llama3.2:3b", "llama3.2:1b", "llama3:8b"],
+    "mistralai":       ["mistral:latest", "mistral:7b-instruct-q2_K", "mistral:7b"],
+    "phi":             ["phi3:mini", "phi3:medium"],
+    "google":          ["gemma2:2b", "gemma2:9b"],
+    "AutoGPT":         ["llama3.2:3b", "llama3.2:1b"],
+    "LangGraph":       ["llama3.2:3b", "mistral:latest"],
+    "OpenInterpreter": ["llama3.2:3b", "mistral:latest"],
 }
 
 
@@ -101,141 +215,501 @@ async def get_available_models() -> list[str]:
         return []
 
 
-async def pick_best_model(preferred: list[str], available: list[str]) -> str | None:
-    for m in preferred:
-        if m in available:
-            return m
-    return available[0] if available else None
-
-
 def classify_task(description: str, task_type: str = "") -> str:
-    if task_type == "browser":
-        return "browser"
+    if task_type in TASK_KEYWORDS:
+        return task_type
     text = description.lower()
-    scores = {cat: 0 for cat in TASK_KEYWORDS}
+    scores = {cat: 0.0 for cat in TASK_KEYWORDS}
     for cat, keywords in TASK_KEYWORDS.items():
         for kw in keywords:
             if kw.lower() in text:
-                scores[cat] += 1
+                scores[cat] += 1.0
     if len(description.split()) <= 4:
-        scores["simple"] += 2
+        scores["simple"] += 2.0
     best = max(scores.items(), key=lambda x: x[1])
     return best[0] if best[1] > 0 else "simple"
 
 
-def select_best_model_py(description: str, available: list[str], task_type: str = "") -> tuple[str, str, str]:
+def select_best_model(description: str, available: list[str], task_type: str = "") -> tuple[str, str, str]:
     category = classify_task(description, task_type)
     if not available:
-        return ("llama3.2:1b", category, "لا نماذج — افتراضي")
-    best, best_score = available[0], -1
-    for m in available:
-        s = MODEL_SCORES.get(m, {}).get(category, 1)
-        if s > best_score:
-            best_score, best = s, m
+        return ("llama3.2:1b", category, "لا نماذج مثبتة — سيتم التنزيل تلقائياً")
+    
+    best_model = available[0]
+    best_score = -1.0
+    
+    for model in available:
+        base = MODEL_BASE_SCORES.get(model, {}).get(category, 0.5)
+        learned = memory.get_model_score(model, category)
+        # مزج النقطة الأساسية مع التعلم المكتسب
+        combined_score = base * 0.6 + learned * 0.4
+        if combined_score > best_score:
+            best_score = combined_score
+            best_model = model
+    
     reasons = {
-        "browser":     "مهمة تصفح ويب",
-        "code":        "مهمة برمجية",
-        "research":    "مهمة بحثية",
-        "creative":    "مهمة إبداعية",
-        "math":        "مهمة رياضية",
-        "translation": "مهمة ترجمة",
-        "reasoning":   "تفكير معقد",
-        "simple":      "مهمة بسيطة",
+        "browser":     "مهمة تصفح ويب — نموذج متخصص في التفاعل مع المواقع",
+        "code":        "مهمة برمجية — نموذج متخصص في كتابة وتحليل الكود",
+        "research":    "مهمة بحثية — نموذج ذو قدرة تحليلية عالية",
+        "creative":    "مهمة إبداعية — نموذج ذو قدرة توليدية قوية",
+        "math":        "مهمة رياضية — نموذج ذو دقة حسابية عالية",
+        "translation": "مهمة ترجمة — نموذج متعدد اللغات",
+        "reasoning":   "مهمة تفكير معقدة — أقوى نموذج متاح",
+        "file":        "عمليات ملفات — نموذج يدعم التعامل مع البيانات",
+        "agent":       "مهمة متعددة الخطوات — نموذج ذو قدرة تخطيطية عالية",
+        "simple":      "مهمة بسيطة — نموذج سريع وكافٍ",
     }
-    return (best, category, reasons.get(category, ""))
+    return (best_model, category, reasons.get(category, ""))
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  نظام الأدوات (Tools)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class Tool:
+    """أداة قابلة للاستخدام من قِبَل الوكيل"""
+    name: str
+    description: str
+
+    async def execute(self, params: dict) -> str:
+        raise NotImplementedError
+
+
+class CodeExecutorTool(Tool):
+    name = "execute_code"
+    description = "تنفيذ كود Python وإرجاع النتيجة"
+
+    async def execute(self, params: dict) -> str:
+        code = params.get("code", "")
+        if not code:
+            return "خطأ: لم يتم تقديم كود"
+        
+        with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
+            f.write(code)
+            fname = f.name
+        
+        try:
+            result = subprocess.run(
+                ["python3", fname],
+                capture_output=True, text=True, timeout=30
+            )
+            output = result.stdout.strip()
+            err = result.stderr.strip()
+            if err and not output:
+                return f"خطأ:\n{err}"
+            return output or "تم التنفيذ بنجاح (لا مخرجات)"
+        except subprocess.TimeoutExpired:
+            return "انتهت مهلة التنفيذ (30 ثانية)"
+        except Exception as e:
+            return f"خطأ: {str(e)}"
+        finally:
+            import os
+            try:
+                os.unlink(fname)
+            except:
+                pass
+
+
+class MathTool(Tool):
+    name = "calculate"
+    description = "حساب التعبيرات الرياضية بأمان"
+
+    async def execute(self, params: dict) -> str:
+        expr = params.get("expression", "")
+        try:
+            # بيئة آمنة للحسابات
+            safe_globals = {
+                "__builtins__": {},
+                "math": math,
+                "abs": abs, "round": round, "min": min, "max": max,
+                "sum": sum, "pow": pow, "len": len,
+                "int": int, "float": float, "str": str,
+            }
+            result = eval(expr, safe_globals)
+            return str(result)
+        except Exception as e:
+            return f"خطأ في الحساب: {str(e)}"
+
+
+class FileReadTool(Tool):
+    name = "read_file"
+    description = "قراءة محتوى ملف نصي"
+
+    async def execute(self, params: dict) -> str:
+        path = params.get("path", "")
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+            return content[:3000] + ("..." if len(content) > 3000 else "")
+        except Exception as e:
+            return f"خطأ في القراءة: {str(e)}"
+
+
+class FileWriteTool(Tool):
+    name = "write_file"
+    description = "كتابة محتوى إلى ملف"
+
+    async def execute(self, params: dict) -> str:
+        path = params.get("path", "")
+        content = params.get("content", "")
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(content)
+            return f"تم الكتابة بنجاح إلى: {path}"
+        except Exception as e:
+            return f"خطأ في الكتابة: {str(e)}"
+
+
+class WebSearchTool(Tool):
+    name = "web_search"
+    description = "البحث عن معلومات على الإنترنت"
+
+    async def execute(self, params: dict) -> str:
+        query = params.get("query", "")
+        try:
+            async with httpx.AsyncClient() as client:
+                # استخدام DuckDuckGo API
+                r = await client.get(
+                    "https://api.duckduckgo.com/",
+                    params={"q": query, "format": "json", "no_redirect": "1", "no_html": "1"},
+                    timeout=10,
+                    headers={"User-Agent": "CortexFlow/1.0"}
+                )
+                data = r.json()
+                
+                results = []
+                if data.get("AbstractText"):
+                    results.append(f"المعلومات: {data['AbstractText']}")
+                if data.get("RelatedTopics"):
+                    for topic in data["RelatedTopics"][:3]:
+                        if isinstance(topic, dict) and topic.get("Text"):
+                            results.append(f"- {topic['Text'][:200]}")
+                
+                return "\n".join(results) if results else f"لم أجد نتائج محددة لـ: {query}"
+        except Exception as e:
+            return f"تعذّر البحث: {str(e)}"
+
+
+class ShellTool(Tool):
+    name = "run_shell"
+    description = "تنفيذ أمر shell آمن"
+    
+    ALLOWED_CMDS = ["ls", "pwd", "echo", "cat", "head", "tail", "grep", "wc", "date", "find"]
+
+    async def execute(self, params: dict) -> str:
+        cmd = params.get("command", "")
+        base_cmd = cmd.split()[0] if cmd else ""
+        
+        if base_cmd not in self.ALLOWED_CMDS:
+            return f"الأمر '{base_cmd}' غير مسموح به. الأوامر المتاحة: {', '.join(self.ALLOWED_CMDS)}"
+        
+        try:
+            result = subprocess.run(
+                cmd, shell=True, capture_output=True, text=True, timeout=10
+            )
+            return result.stdout.strip() or result.stderr.strip() or "لا مخرجات"
+        except Exception as e:
+            return f"خطأ: {str(e)}"
+
+
+# تسجيل الأدوات
+TOOLS: dict[str, Tool] = {
+    "execute_code": CodeExecutorTool(),
+    "calculate": MathTool(),
+    "read_file": FileReadTool(),
+    "write_file": FileWriteTool(),
+    "web_search": WebSearchTool(),
+    "run_shell": ShellTool(),
+}
+
+TOOLS_DESCRIPTION = "\n".join([
+    f"- {name}: {tool.description}"
+    for name, tool in TOOLS.items()
+])
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  استدعاء Ollama
+# ══════════════════════════════════════════════════════════════════════════════
 
 async def ollama_chat(
     model: str,
     messages: list[dict],
-    max_tokens: int = 500,
+    max_tokens: int = 800,
     temperature: float = 0.3,
 ) -> str:
     async with httpx.AsyncClient() as c:
-        r = await c.post(
+        try:
+            r = await c.post(
+                f"{OLLAMA_URL}/api/chat",
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "stream": False,
+                    "options": {"num_predict": max_tokens, "temperature": temperature},
+                },
+                timeout=180,
+            )
+            return r.json().get("message", {}).get("content", "")
+        except Exception as e:
+            return f"[خطأ في النموذج: {str(e)}]"
+
+
+async def ollama_stream(model: str, messages: list[dict], max_tokens: int = 1000):
+    """دفق الردود من النموذج"""
+    async with httpx.AsyncClient() as c:
+        async with c.stream(
+            "POST",
             f"{OLLAMA_URL}/api/chat",
             json={
                 "model": model,
                 "messages": messages,
-                "stream": False,
-                "options": {"num_predict": max_tokens, "temperature": temperature},
+                "stream": True,
+                "options": {"num_predict": max_tokens, "temperature": 0.3},
             },
-            timeout=120,
-        )
-        return r.json().get("message", {}).get("content", "")
+            timeout=180,
+        ) as r:
+            async for line in r.aiter_lines():
+                if line:
+                    try:
+                        data = json.loads(line)
+                        chunk = data.get("message", {}).get("content", "")
+                        if chunk:
+                            yield chunk
+                    except:
+                        pass
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  1. LangGraph Agent  (langchain-ai/langgraph)
-#     Multi-node pipeline: observe → think → plan → act → verify
-#     Uses conditional routing: if act result is insufficient → retry act
+#  1. OODA Agent — الوكيل الرئيسي الاحترافي
+#  Observe → Orient → Decide → Act (مثل Manus/Claude)
+# ══════════════════════════════════════════════════════════════════════════════
+
+MASTER_SYSTEM_PROMPT = """أنت CortexFlow، وكيل ذكاء اصطناعي احترافي متكامل.
+
+قدراتك:
+{tools}
+
+مبادئك:
+1. حلّل المهمة بعمق قبل التنفيذ
+2. استخدم الأدوات المناسبة تلقائياً
+3. نفّذ خطوة بخطوة مع التحقق من كل نتيجة
+4. إذا أخفقت محاولة، جرّب نهجاً آخر
+5. قدّم نتيجة شاملة ومنظمة
+
+للاستخدام أداة، اكتب:
+TOOL: <اسم الأداة>
+PARAMS: {{"مفتاح": "قيمة"}}
+
+للانتهاء من المهمة، اكتب:
+RESULT: <النتيجة النهائية>
+""".format(tools=TOOLS_DESCRIPTION)
+
+
+async def parse_and_execute_tool(response: str) -> tuple[str | None, str | None]:
+    """استخراج وتنفيذ أداة من رد النموذج"""
+    tool_match = re.search(r'TOOL:\s*(\w+)', response)
+    params_match = re.search(r'PARAMS:\s*(\{.*?\})', response, re.DOTALL)
+    
+    if not tool_match:
+        return None, None
+    
+    tool_name = tool_match.group(1).strip()
+    params = {}
+    
+    if params_match:
+        try:
+            params = json.loads(params_match.group(1))
+        except:
+            params_text = params_match.group(1)
+            kv_match = re.findall(r'"(\w+)":\s*"([^"]*)"', params_text)
+            params = dict(kv_match)
+    
+    if tool_name not in TOOLS:
+        return tool_name, f"الأداة '{tool_name}' غير موجودة. الأدوات المتاحة: {', '.join(TOOLS.keys())}"
+    
+    tool_result = await TOOLS[tool_name].execute(params)
+    return tool_name, tool_result
+
+
+async def ooda_agent(task: str, model: str, category: str, max_iterations: int = 8) -> dict:
+    """
+    OODA Loop Agent — الوكيل الاحترافي الرئيسي
+    Observe → Orient → Decide → Act
+    """
+    steps = []
+    start_time = time.time()
+    messages = [{"role": "system", "content": MASTER_SYSTEM_PROMPT}]
+
+    # ── مرحلة المراقبة (Observe) ─────────────────────────────────────────
+    observe_prompt = f"""المهمة: {task}
+نوع المهمة: {category}
+
+1. حلّل المهمة وحدد:
+   - ما المطلوب بالضبط؟
+   - هل تحتاج أدوات؟ أيها؟
+   - ما التحديات المحتملة؟"""
+
+    messages.append({"role": "user", "content": observe_prompt})
+    observation = await ollama_chat(model, messages, max_tokens=400)
+    messages.append({"role": "assistant", "content": observation})
+    steps.append(f"[OBSERVE] {observation}")
+
+    # ── مرحلة التوجه (Orient) ────────────────────────────────────────────
+    orient_prompt = """بناءً على تحليلك، حدد:
+1. الاستراتيجية المثلى للتنفيذ
+2. الخطوات المتسلسلة (مرقمة)
+3. الأدوات المطلوبة إن وجدت"""
+
+    messages.append({"role": "user", "content": orient_prompt})
+    orientation = await ollama_chat(model, messages, max_tokens=400)
+    messages.append({"role": "assistant", "content": orientation})
+    steps.append(f"[ORIENT] {orientation}")
+
+    # ── مرحلة التنفيذ (Decide + Act) ────────────────────────────────────
+    final_result = ""
+    iterations = 0
+
+    for i in range(max_iterations):
+        iterations += 1
+        
+        if i == 0:
+            act_prompt = f"""الآن نفّذ المهمة: {task}
+
+إذا احتجت أداة، استخدم صيغة:
+TOOL: <اسم>
+PARAMS: {{"مفتاح": "قيمة"}}
+
+إذا انتهيت، اكتب:
+RESULT: <النتيجة الكاملة والمفصلة>"""
+        else:
+            act_prompt = "استمر في التنفيذ أو أعطِ النتيجة النهائية باستخدام RESULT:"
+
+        messages.append({"role": "user", "content": act_prompt})
+        response = await ollama_chat(model, messages, max_tokens=800, temperature=0.2)
+        messages.append({"role": "assistant", "content": response})
+
+        # تحقق من استخدام أداة
+        tool_name, tool_result = await parse_and_execute_tool(response)
+        if tool_name and tool_result:
+            steps.append(f"[TOOL:{tool_name}] {tool_result}")
+            messages.append({
+                "role": "user",
+                "content": f"نتيجة الأداة '{tool_name}':\n{tool_result}\n\nواصل التنفيذ أو أعطِ النتيجة النهائية."
+            })
+            continue
+
+        # تحقق من النتيجة النهائية
+        result_match = re.search(r'RESULT:\s*(.+)', response, re.DOTALL)
+        if result_match:
+            final_result = result_match.group(1).strip()
+            steps.append(f"[ACT-{i+1}] {response}")
+            break
+
+        steps.append(f"[ACT-{i+1}] {response}")
+        
+        # إذا لم يستخدم صيغة محددة، نعتبر الرد هو النتيجة
+        if i >= 2 and not tool_name:
+            final_result = response
+            break
+
+    # ── مرحلة التحقق (Verify) ────────────────────────────────────────────
+    if not final_result:
+        final_result = steps[-1].replace("[ACT-" + str(iterations) + "] ", "") if steps else "اكتمل التنفيذ"
+
+    verify_msgs = [
+        {"role": "system", "content": "أنت مراجع جودة. قيّم النتيجة باختصار."},
+        {"role": "user", "content": f"المهمة: {task}\nالنتيجة: {final_result[:500]}\nهل اكتملت المهمة؟ قيّم وحسّن إن لزم."}
+    ]
+    verification = await ollama_chat(model, verify_msgs, max_tokens=300)
+    steps.append(f"[VERIFY] {verification}")
+
+    duration = time.time() - start_time
+    success = len(final_result) > 20
+
+    # تحديث الذاكرة والتحسين الذاتي
+    quality = min(1.0, len(final_result) / 200)
+    memory.record_result(model, category, success, duration, quality)
+
+    return {
+        "steps": steps,
+        "result": final_result,
+        "verification": verification,
+        "duration": duration,
+        "iterations": iterations,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  2. LangGraph Agent — وكيل متعدد العقد
 # ══════════════════════════════════════════════════════════════════════════════
 
 class AgentState(TypedDict):
     messages:  Annotated[Sequence[BaseMessage], add_messages]
     task:      str
     model:     str
+    category:  str
     steps:     list[str]
     result:    str
     done:      bool
     retries:   int
+    tool_results: list[str]
 
 
-def build_langgraph_agent(model_name: str):
-    """
-    LangGraph pipeline with conditional retry edge.
-    observe → think → plan → act → verify
-                               ↑_____ (if incomplete, retry act)
-    """
+def build_langgraph_agent(model_name: str, category: str):
+    """LangGraph pipeline: observe → think → plan → act → verify"""
 
     async def observe_node(state: AgentState) -> dict:
         r = await ollama_chat(model_name, [
-            {"role": "system", "content": "أنت وكيل ذكاء اصطناعي. حلّل المهمة وحدد المتطلبات الأساسية."},
-            {"role": "user",   "content": f"المهمة: {state['task']}\nما المتطلبات الرئيسية؟"},
-        ], max_tokens=300)
-        return {
-            "steps": state["steps"] + [f"[OBSERVE] {r}"],
-            "messages": [AIMessage(content=r)],
-        }
+            {"role": "system", "content": f"أنت وكيل ذكاء اصطناعي متخصص في مهام {category}. حلّل المهمة بعمق."},
+            {"role": "user", "content": f"المهمة: {state['task']}\nما المتطلبات الجوهرية والتحديات المتوقعة؟"},
+        ], max_tokens=350)
+        return {"steps": state["steps"] + [f"[OBSERVE] {r}"], "messages": [AIMessage(content=r)]}
 
     async def think_node(state: AgentState) -> dict:
-        history = [{"role": "system", "content": "أنت خبير تحليل وتخطيط."}]
+        history = [{"role": "system", "content": "أنت خبير تحليل استراتيجي."}]
         for m in list(state["messages"])[-4:]:
             history.append({"role": "assistant" if isinstance(m, AIMessage) else "user", "content": m.content})
-        history.append({"role": "user", "content": "ما أفضل نهج لتنفيذ هذه المهمة بالكامل؟"})
-        r = await ollama_chat(model_name, history, max_tokens=300)
-        return {
-            "steps": state["steps"] + [f"[THINK] {r}"],
-            "messages": [AIMessage(content=r)],
-        }
+        history.append({"role": "user", "content": "ما أفضل نهج لتنفيذ هذه المهمة بالكامل؟ فكّر بعمق."})
+        r = await ollama_chat(model_name, history, max_tokens=350)
+        return {"steps": state["steps"] + [f"[THINK] {r}"], "messages": [AIMessage(content=r)]}
 
     async def plan_node(state: AgentState) -> dict:
         r = await ollama_chat(model_name, [
-            {"role": "system", "content": "أنت مخطط مهام دقيق. اذكر الخطوات بترقيم."},
-            {"role": "user",   "content": f"المهمة: {state['task']}\nاذكر الخطوات المتسلسلة لإنجازها."},
-        ], max_tokens=250)
-        return {
-            "steps": state["steps"] + [f"[PLAN] {r}"],
-            "messages": [AIMessage(content=r)],
-        }
+            {"role": "system", "content": "أنت مخطط مهام دقيق. ضع خطة واضحة ومتسلسلة."},
+            {"role": "user", "content": f"المهمة: {state['task']}\nضع خطة تنفيذ مفصّلة ومرقّمة."},
+        ], max_tokens=300)
+        return {"steps": state["steps"] + [f"[PLAN] {r}"], "messages": [AIMessage(content=r)]}
 
     async def act_node(state: AgentState) -> dict:
+        context = ""
+        if state.get("tool_results"):
+            context = f"\n\nنتائج الأدوات:\n" + "\n".join(state["tool_results"][-2:])
+        
         r = await ollama_chat(model_name, [
-            {"role": "system", "content": "أنت منفذ مهام. قدّم النتيجة الفعلية الكاملة."},
-            {"role": "user",   "content": f"نفّذ هذه المهمة وأعطِ النتيجة: {state['task']}"},
-        ], max_tokens=600)
+            {"role": "system", "content": f"أنت منفذ مهام محترف متخصص في {category}. قدّم النتيجة الفعلية الكاملة."},
+            {"role": "user", "content": f"نفّذ هذه المهمة بالكامل وأعطِ النتيجة الشاملة:\n{state['task']}{context}"},
+        ], max_tokens=800, temperature=0.2)
+        
+        # محاولة تنفيذ أداة إذا طُلبت
+        tool_name, tool_result = await parse_and_execute_tool(r)
+        tool_results = state.get("tool_results", [])
+        if tool_result:
+            tool_results = tool_results + [f"{tool_name}: {tool_result}"]
+        
         return {
             "steps": state["steps"] + [f"[ACT] {r}"],
             "result": r,
             "messages": [AIMessage(content=r)],
+            "tool_results": tool_results,
         }
 
     async def verify_node(state: AgentState) -> dict:
         r = await ollama_chat(model_name, [
-            {"role": "system", "content": "تحقق من اكتمال المهمة."},
-            {"role": "user",   "content": f"المهمة: {state['task']}\nالنتيجة: {state['result']}\nهل اكتملت المهمة فعلاً؟ قيّم وأعطِ الإجابة النهائية."},
-        ], max_tokens=200)
-        complete = any(w in r for w in ["نعم", "اكتمل", "تم", "yes", "complete", "done"])
+            {"role": "system", "content": "أنت مراجع جودة دقيق."},
+            {"role": "user", "content": f"المهمة: {state['task']}\nالنتيجة:\n{state['result']}\n\nهل اكتملت المهمة بالكامل؟ قيّم وحسّن."},
+        ], max_tokens=300)
+        complete = any(w in r for w in ["نعم", "اكتمل", "تم", "yes", "complete", "done", "مكتمل"])
         return {
             "steps": state["steps"] + [f"[VERIFY] {r}"],
             "result": r,
@@ -245,7 +719,6 @@ def build_langgraph_agent(model_name: str):
         }
 
     def should_retry(state: AgentState) -> str:
-        """Conditional edge: retry act if verify says incomplete (max 2 retries)."""
         if not state.get("done") and state.get("retries", 0) < 2:
             return "act"
         return END
@@ -268,45 +741,44 @@ def build_langgraph_agent(model_name: str):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  2. AutoGPT Agent  (Significant-Gravitas/AutoGPT)
-#     Self-directed agent: decomposes goal → creates task list → executes → reflects
+#  3. AutoGPT Agent — وكيل ذاتي التوجيه مع ذاكرة
 # ══════════════════════════════════════════════════════════════════════════════
 
 class AutoGPTMemory:
-    """Short-term memory for AutoGPT agent."""
     def __init__(self):
         self.observations: list[str] = []
         self.completed_tasks: list[str] = []
         self.pending_tasks: list[str] = []
+        self.tool_outputs: list[str] = []
         self.final_result: str = ""
 
     def summary(self) -> str:
         obs = "\n".join(self.observations[-3:]) if self.observations else "لا يوجد"
         done = "\n".join(f"✓ {t}" for t in self.completed_tasks) or "لا يوجد"
         pending = "\n".join(f"○ {t}" for t in self.pending_tasks[:3]) or "لا يوجد"
-        return f"الملاحظات:\n{obs}\n\nالمنجز:\n{done}\n\nالمعلق:\n{pending}"
+        tools = "\n".join(self.tool_outputs[-2:]) if self.tool_outputs else ""
+        result = f"الملاحظات:\n{obs}\n\nالمنجز:\n{done}\n\nالمعلق:\n{pending}"
+        if tools:
+            result += f"\n\nنتائج الأدوات:\n{tools}"
+        return result
 
 
-async def autogpt_agent(task: str, model: str, max_iterations: int = 6) -> dict:
-    """
-    AutoGPT-inspired iterative agent.
-    Phase 1: Decompose goal into subtasks
-    Phase 2: Execute subtasks iteratively with memory and self-critique
-    Phase 3: Synthesize final result
-    """
-    memory = AutoGPTMemory()
+async def autogpt_agent(task: str, model: str, category: str, max_iterations: int = 6) -> dict:
+    """AutoGPT-inspired agent with memory, tools, and self-critique"""
+    memory_obj = AutoGPTMemory()
     steps: list[str] = []
+    start_time = time.time()
 
-    # ── Phase 1: Decompose into subtasks ─────────────────────────────────────
+    # تحليل وتقسيم الهدف
     decompose_resp = await ollama_chat(model, [
-        {"role": "system", "content": """أنت AutoGPT. عند استلام هدف:
-1. قسّمه إلى مهام صغيرة قابلة للتنفيذ (3-5 مهام)
-2. اكتبها كقائمة مرقمة
-3. لا تضف شرحاً إضافياً"""},
-        {"role": "user", "content": f"الهدف: {task}\nقسّمه إلى خطوات تنفيذية:"},
+        {"role": "system", "content": f"""أنت AutoGPT، وكيل ذاتي التوجيه متخصص في مهام {category}.
+الأدوات المتاحة:
+{TOOLS_DESCRIPTION}
+
+قسّم الهدف إلى 3-5 مهام صغيرة قابلة للتنفيذ. اكتبها كقائمة مرقمة فقط."""},
+        {"role": "user", "content": f"الهدف: {task}\nقسّمه:"},
     ], max_tokens=300, temperature=0.2)
 
-    # Extract subtasks from numbered list
     subtasks = []
     for line in decompose_resp.strip().split("\n"):
         line = line.strip()
@@ -316,177 +788,158 @@ async def autogpt_agent(task: str, model: str, max_iterations: int = 6) -> dict:
                 subtasks.append(cleaned)
 
     if not subtasks:
-        subtasks = [task]  # Fallback: treat whole task as one subtask
+        subtasks = [task]
 
-    memory.pending_tasks = subtasks.copy()
-    steps.append(f"[DECOMPOSE] تقسيم الهدف إلى {len(subtasks)} مهام:\n" + "\n".join(f"  {i+1}. {t}" for i, t in enumerate(subtasks)))
+    memory_obj.pending_tasks = subtasks.copy()
+    steps.append(f"[DECOMPOSE] تقسيم إلى {len(subtasks)} مهام:\n" + "\n".join(f"  {i+1}. {t}" for i, t in enumerate(subtasks)))
 
-    # ── Phase 2: Execute subtasks with memory ────────────────────────────────
     for iteration in range(min(max_iterations, len(subtasks) + 1)):
-        if not memory.pending_tasks:
+        if not memory_obj.pending_tasks:
             break
 
-        current_task = memory.pending_tasks.pop(0)
+        current_task = memory_obj.pending_tasks.pop(0)
+        context = memory_obj.summary()
 
-        # Build context-aware prompt
-        context = memory.summary()
         exec_resp = await ollama_chat(model, [
             {"role": "system", "content": f"""أنت AutoGPT تنفّذ مهمة ضمن هدف أكبر.
 الهدف الرئيسي: {task}
+ذاكرتك:
+{context}
 
-الذاكرة الحالية:
-{context}"""},
-            {"role": "user", "content": f"نفّذ هذه المهمة الآن: {current_task}\nقدّم النتيجة الفعلية:"},
-        ], max_tokens=400, temperature=0.3)
+إذا احتجت أداة:
+TOOL: <اسم>
+PARAMS: {{"مفتاح": "قيمة"}}"""},
+            {"role": "user", "content": f"نفّذ: {current_task}"},
+        ], max_tokens=500, temperature=0.3)
 
-        memory.observations.append(f"نتيجة '{current_task}': {exec_resp[:100]}...")
-        memory.completed_tasks.append(current_task)
+        tool_name, tool_result = await parse_and_execute_tool(exec_resp)
+        if tool_result:
+            memory_obj.tool_outputs.append(f"{tool_name}: {tool_result[:200]}")
+            exec_resp = f"{exec_resp}\n\nنتيجة الأداة:\n{tool_result}"
 
-        # Self-critique
-        critique_resp = await ollama_chat(model, [
-            {"role": "system", "content": "قيّم النتيجة باختصار. هل تحتاج تحسيناً؟ نعم/لا + سبب."},
-            {"role": "user", "content": f"المهمة: {current_task}\nالنتيجة: {exec_resp}\nالتقييم:"},
-        ], max_tokens=100, temperature=0.2)
+        memory_obj.observations.append(f"'{current_task}': {exec_resp[:150]}...")
+        memory_obj.completed_tasks.append(current_task)
 
-        steps.append(f"[STEP {iteration+1}] {current_task}\n→ {exec_resp}\n⚡ تقييم ذاتي: {critique_resp}")
+        critique = await ollama_chat(model, [
+            {"role": "system", "content": "قيّم النتيجة: هل تكفي؟ نعم/لا + ملاحظة موجزة."},
+            {"role": "user", "content": f"المهمة: {current_task}\nالنتيجة: {exec_resp[:300]}\nالتقييم:"},
+        ], max_tokens=80, temperature=0.1)
 
-    # ── Phase 3: Synthesize final result ────────────────────────────────────
+        steps.append(f"[STEP-{iteration+1}] {current_task}\n→ {exec_resp[:300]}\n⚡ {critique}")
+
     synthesis = await ollama_chat(model, [
-        {"role": "system", "content": "لخّص إنجازات الوكيل في إجابة شاملة نهائية."},
-        {"role": "user", "content": f"الهدف: {task}\nما تم إنجازه:\n{memory.summary()}\nالملخص النهائي:"},
-    ], max_tokens=400, temperature=0.3)
+        {"role": "system", "content": "لخّص إنجازات الوكيل في إجابة شاملة ومنظمة نهائية."},
+        {"role": "user", "content": f"الهدف: {task}\nما تم إنجازه:\n{memory_obj.summary()}\nالملخص النهائي:"},
+    ], max_tokens=600, temperature=0.2)
 
     steps.append(f"[SYNTHESIS] {synthesis}")
-    memory.final_result = synthesis
+    duration = time.time() - start_time
+    
+    quality = min(1.0, len(synthesis) / 300)
+    memory.record_result(model, category, True, duration, quality)
 
     return {"steps": steps, "result": synthesis}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  3. Open Interpreter Agent  (OpenInterpreter/open-interpreter)
-#     Executes code locally using Ollama as the LLM backend
-#     Supports: Python, Shell, JavaScript
+#  4. Open Interpreter Agent — منفّذ الكود
 # ══════════════════════════════════════════════════════════════════════════════
 
-def build_open_interpreter(model: str):
-    """Configure Open Interpreter to use local Ollama model."""
-    try:
-        from interpreter import interpreter as itp
-        itp.llm.model        = f"ollama/{model}"
-        itp.llm.api_base     = OLLAMA_URL
-        itp.llm.max_tokens   = 800
-        itp.auto_run         = True      # don't ask for confirmation
-        itp.offline          = True      # no cloud, local only
-        itp.safe_mode        = "off"     # allow execution
-        itp.verbose          = False
-        itp.system_message   = """You are a code execution agent. When given a task:
-1. Write the code to accomplish it
-2. Execute it immediately
-3. Show the output
-4. Summarize what was done"""
-        return itp
-    except Exception as e:
-        return None
-
-
-async def open_interpreter_agent(task: str, model: str) -> dict:
-    """
-    Open Interpreter agent: plans + writes + executes code locally.
-    Falls back to Ollama-only if interpreter has issues.
-    """
+async def code_interpreter_agent(task: str, model: str) -> dict:
+    """وكيل تنفيذ الكود المباشر"""
     steps: list[str] = []
-    steps.append(f"[OI] Open Interpreter — نموذج: {model}")
+    steps.append(f"[CODE-INTERPRETER] نموذج: {model}")
 
-    itp = build_open_interpreter(model)
+    # توليد الكود
+    code_resp = await ollama_chat(model, [
+        {"role": "system", "content": """أنت مبرمج Python خبير.
+اكتب كوداً قابلاً للتشغيل مباشرةً لتنفيذ المهمة.
+أحط الكود بـ ```python و```.
+لا تضف شرحاً قبل الكود."""},
+        {"role": "user", "content": f"المهمة: {task}\nالكود:"},
+    ], max_tokens=800, temperature=0.1)
 
-    if itp is None:
-        # Fallback: use Ollama directly for code generation
-        code_resp = await ollama_chat(model, [
-            {"role": "system", "content": "أنت مبرمج خبير. اكتب كوداً Python منظماً وقابلاً للتشغيل."},
-            {"role": "user", "content": f"المهمة: {task}\nاكتب الكود:"},
-        ], max_tokens=600)
-        steps.append(f"[CODE]\n{code_resp}")
-        return {"steps": steps, "result": code_resp}
+    steps.append(f"[GENERATE] {code_resp}")
 
-    # Run in thread pool to avoid blocking
-    def run_interpreter():
-        try:
-            messages = itp.chat(task, display=False, stream=False)
-            result_parts = []
-            for msg in messages:
-                if isinstance(msg, dict):
-                    content = msg.get("content", "")
-                    role    = msg.get("role", "")
-                    mtype   = msg.get("type", "")
-                    if content and role == "computer":
-                        result_parts.append(f"[output] {content}")
-                    elif content and mtype == "code":
-                        result_parts.append(f"[code]\n{content}")
-                    elif content and role == "assistant" and mtype == "message":
-                        result_parts.append(content)
-            return "\n".join(result_parts) or "تم التنفيذ"
-        except Exception as e:
-            return f"خطأ في التنفيذ: {str(e)}"
+    # استخراج الكود
+    code_match = re.search(r'```python\n(.*?)```', code_resp, re.DOTALL)
+    if not code_match:
+        code_match = re.search(r'```\n(.*?)```', code_resp, re.DOTALL)
 
-    loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, run_interpreter)
+    if code_match:
+        code = code_match.group(1).strip()
+        executor = CodeExecutorTool()
+        result = await executor.execute({"code": code})
+        steps.append(f"[EXECUTE]\nالكود:\n{code}\n\nالمخرجات:\n{result}")
 
-    steps.append(f"[EXECUTE] {result}")
-    return {"steps": steps, "result": result}
+        # تحليل النتيجة
+        analysis = await ollama_chat(model, [
+            {"role": "system", "content": "حلّل مخرجات الكود وفسّرها."},
+            {"role": "user", "content": f"المهمة: {task}\nالكود:\n{code}\nالمخرجات:\n{result}\nالتفسير:"},
+        ], max_tokens=300)
+        steps.append(f"[ANALYZE] {analysis}")
+
+        return {"steps": steps, "result": f"الكود:\n```python\n{code}\n```\n\nالمخرجات:\n{result}\n\nالتحليل:\n{analysis}"}
+
+    return {"steps": steps, "result": code_resp}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  4. Mistral Agent  (mistralai)
-#     Uses Mistral's native [INST] prompt format via Ollama
-#     Specialized in: code, reasoning, multilingual tasks
+#  5. Mistral Agent — وكيل Mistral المتخصص
 # ══════════════════════════════════════════════════════════════════════════════
 
-def format_mistral_prompt(task: str, system: str = "") -> list[dict]:
-    """
-    Mistral uses [INST] instruction format.
-    system prompt is embedded in the first user message.
-    """
-    if system:
-        user_content = f"{system}\n\n{task}"
-    else:
-        user_content = task
-    return [
-        {"role": "user", "content": f"[INST] {user_content} [/INST]"},
+async def mistral_agent(task: str, model: str, category: str) -> dict:
+    steps: list[str] = []
+
+    analyze_msgs = [
+        {"role": "user", "content": f"[INST] أنت Mistral AI، خبير في مهام {category}. حلّل هذه المهمة وضع خطة:\n{task} [/INST]"}
     ]
-
-
-async def mistral_agent(task: str, model: str) -> dict:
-    """
-    Mistral-native agent with [INST] formatting.
-    Runs in a chain: analyze → execute → format output
-    """
-    steps: list[str] = []
-
-    # Step 1: Analyze with Mistral [INST] format
-    analyze_msgs = format_mistral_prompt(
-        task,
-        system="أنت Mistral AI، خبير في التحليل والبرمجة. حلّل المهمة وخطط للتنفيذ."
-    )
-    analysis = await ollama_chat(model, analyze_msgs, max_tokens=300, temperature=0.3)
+    analysis = await ollama_chat(model, analyze_msgs, max_tokens=400, temperature=0.3)
     steps.append(f"[MISTRAL:ANALYZE] {analysis}")
 
-    # Step 2: Execute
-    execute_msgs = format_mistral_prompt(
-        f"المهمة: {task}\nالتحليل: {analysis}\nنفّذ الآن وأعطِ النتيجة:",
-        system="أنت Mistral AI. قدّم النتيجة الكاملة والدقيقة."
-    )
-    result = await ollama_chat(model, execute_msgs, max_tokens=600, temperature=0.2)
+    execute_msgs = [
+        {"role": "user", "content": f"[INST] المهمة: {task}\nالتحليل: {analysis}\nنفّذ الآن وأعطِ النتيجة الكاملة والدقيقة. [/INST]"}
+    ]
+    result = await ollama_chat(model, execute_msgs, max_tokens=800, temperature=0.15)
     steps.append(f"[MISTRAL:EXECUTE] {result}")
 
-    # Step 3: Format & verify
-    verify_msgs = format_mistral_prompt(
-        f"راجع هذه النتيجة وأصلح أي أخطاء:\n{result}",
-        system="أنت Mistral AI. تحقق ولخّص."
-    )
-    final = await ollama_chat(model, verify_msgs, max_tokens=200, temperature=0.1)
+    verify_msgs = [
+        {"role": "user", "content": f"[INST] راجع النتيجة وتحقق من اكتمالها:\n{result[:400]}\n\nهل هي كاملة ودقيقة؟ حسّن إن لزم. [/INST]"}
+    ]
+    final = await ollama_chat(model, verify_msgs, max_tokens=300, temperature=0.1)
     steps.append(f"[MISTRAL:VERIFY] {final}")
 
     return {"steps": steps, "result": final}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  نظام التنزيل التلقائي للنماذج
+# ══════════════════════════════════════════════════════════════════════════════
+
+RECOMMENDED_MODELS = [
+    ("qwen2:0.5b",               "مهام بسيطة وترجمة سريعة",          352),
+    ("llama3.2:1b",              "مهام عامة متوازنة",                 1300),
+    ("llama3.2:3b",              "مهام معقدة ومتوسطة",                2000),
+    ("mistral:7b-instruct-q2_K", "تفكير عميق وبرمجة متقدمة",         3000),
+]
+
+
+async def ensure_model_available(model_name: str) -> bool:
+    """تنزيل نموذج إذا لم يكن متاحاً"""
+    available = await get_available_models()
+    if model_name in available:
+        return True
+    
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ollama", "pull", model_name,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await asyncio.wait_for(proc.wait(), timeout=600)
+        return proc.returncode == 0
+    except Exception:
+        return False
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -494,184 +947,218 @@ async def mistral_agent(task: str, model: str) -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TaskRequest(BaseModel):
-    task:     str
-    provider: str = "LangGraph"
-    model:    str | None = None
+    task:      str
+    provider:  str = "auto"
+    model:     str | None = None
+    task_type: str = ""
 
 
 class TaskResponse(BaseModel):
-    provider: str
-    model:    str
-    steps:    list[str]
-    result:   str
-    category: str = ""
-    engine:   str = ""
+    provider:  str
+    model:     str
+    category:  str
+    steps:     list[str]
+    result:    str
+    duration:  float = 0.0
+
+
+class ModelPullRequest(BaseModel):
+    model: str
 
 
 @app.get("/health")
 async def health():
-    models = await get_available_models()
+    available = await get_available_models()
+    stats = memory.get_stats()
     return {
-        "status": "ok",
-        "available_models": models,
-        "providers": list(PROVIDER_MODELS.keys()),
-        "integrations": {
-            "langgraph":          True,
-            "autogpt":            True,
-            "open_interpreter":   True,
-            "mistral_formatting": True,
-        },
+        "status": "healthy",
+        "models_available": len(available),
+        "models": available,
+        "performance": stats,
+        "tools": list(TOOLS.keys()),
+        "self_improvement_report": memory.generate_self_improvement_report(),
     }
 
 
 @app.get("/models")
 async def list_models():
     available = await get_available_models()
-    result = {}
-    for provider, preferred in PROVIDER_MODELS.items():
-        installed = [m for m in preferred if m in available]
-        result[provider] = {"preferred": preferred, "installed": installed}
-    return result
+    recommended = []
+    for name, desc, size_mb in RECOMMENDED_MODELS:
+        installed = name in available
+        recommended.append({
+            "name": name,
+            "description": desc,
+            "size_mb": size_mb,
+            "installed": installed,
+        })
+    return {"available": available, "recommended": recommended}
+
+
+@app.post("/models/pull")
+async def pull_model(req: ModelPullRequest):
+    """تنزيل نموذج في الخلفية"""
+    async def do_pull():
+        await ensure_model_available(req.model)
+    
+    asyncio.create_task(do_pull())
+    return {"status": "pulling", "model": req.model, "message": f"جاري تنزيل {req.model}..."}
+
+
+@app.post("/run", response_model=TaskResponse)
+async def run_task(req: TaskRequest):
+    available = await get_available_models()
+    
+    if req.model:
+        chosen_model = req.model
+        category = classify_task(req.task, req.task_type)
+        reason = "نموذج محدد يدوياً"
+    else:
+        chosen_model, category, reason = select_best_model(req.task, available, req.task_type)
+    
+    # تنزيل النموذج إذا لم يكن متاحاً
+    if chosen_model not in available and available:
+        chosen_model = available[0]
+    elif not available:
+        return TaskResponse(
+            provider="error",
+            model="none",
+            category="error",
+            steps=["[ERROR] لا يوجد نماذج مثبتة. يرجى تنزيل نموذج أولاً."],
+            result="لا توجد نماذج. استخدم /models/pull لتنزيل نموذج.",
+        )
+
+    # اختيار المزود الأفضل بحسب المهمة أو الطلب
+    provider = req.provider
+    if provider == "auto":
+        if category == "code":
+            provider = "OpenInterpreter"
+        elif category in ["reasoning", "math", "research"] and any("mistral" in m for m in available):
+            provider = "Mistral"
+        elif category in ["agent", "complex"]:
+            provider = "LangGraph"
+        else:
+            provider = "OODA"
+
+    try:
+        start = time.time()
+
+        if provider == "LangGraph":
+            graph = build_langgraph_agent(chosen_model, category)
+            init_state: AgentState = {
+                "messages": [HumanMessage(content=req.task)],
+                "task": req.task, "model": chosen_model, "category": category,
+                "steps": [], "result": "", "done": False, "retries": 0, "tool_results": []
+            }
+            final_state = await graph.ainvoke(init_state)
+            result_data = {"steps": final_state["steps"], "result": final_state["result"]}
+
+        elif provider == "AutoGPT":
+            result_data = await autogpt_agent(req.task, chosen_model, category)
+
+        elif provider == "OpenInterpreter":
+            result_data = await code_interpreter_agent(req.task, chosen_model)
+
+        elif provider == "Mistral":
+            mistral_model = next((m for m in available if "mistral" in m.lower()), chosen_model)
+            result_data = await mistral_agent(req.task, mistral_model, category)
+
+        else:  # OODA (الافتراضي — الأكثر احترافية)
+            result_data = await ooda_agent(req.task, chosen_model, category)
+
+        duration = time.time() - start
+
+        return TaskResponse(
+            provider=provider,
+            model=chosen_model,
+            category=category,
+            steps=result_data.get("steps", []),
+            result=result_data.get("result", ""),
+            duration=round(duration, 2),
+        )
+
+    except Exception as e:
+        return TaskResponse(
+            provider=provider,
+            model=chosen_model,
+            category=category,
+            steps=[f"[ERROR] {str(e)}"],
+            result=f"خطأ في التنفيذ: {str(e)}",
+        )
 
 
 @app.get("/providers")
-async def list_providers():
-    """List all integrated providers with descriptions."""
+async def get_providers():
+    available = await get_available_models()
     return {
-        "LangGraph": {
-            "description": "Multi-node agent graph with conditional retry edges",
-            "source": "github.com/langchain-ai/langgraph",
-            "nodes": ["observe", "think", "plan", "act", "verify"],
-        },
-        "AutoGPT": {
-            "description": "Goal decomposition + iterative execution with memory and self-critique",
-            "source": "github.com/Significant-Gravitas/AutoGPT",
-            "phases": ["decompose", "execute", "critique", "synthesize"],
-        },
-        "OpenInterpreter": {
-            "description": "Local code execution agent (Python/Shell) via Ollama",
-            "source": "github.com/OpenInterpreter/open-interpreter",
-            "capabilities": ["python", "shell", "javascript"],
-        },
-        "mistralai": {
-            "description": "Mistral AI models with native [INST] prompt formatting",
-            "source": "github.com/mistralai",
-            "format": "[INST] prompt [/INST]",
-        },
-        "QwenLM": {
-            "description": "Alibaba Qwen models — fast, multilingual",
-            "source": "github.com/QwenLM",
-        },
-        "meta-llama": {
-            "description": "Meta Llama models — capable, versatile",
-            "source": "github.com/meta-llama",
-        },
+        "providers": [
+            {"id": "auto",            "name": "تلقائي (الأذكى)",     "description": "يختار المزود والنموذج الأمثل تلقائياً"},
+            {"id": "OODA",            "name": "OODA Agent",           "description": "وكيل احترافي: مراقبة → توجه → قرار → تنفيذ"},
+            {"id": "LangGraph",       "name": "LangGraph Pipeline",   "description": "خط أنابيب متعدد العقد مع إعادة المحاولة"},
+            {"id": "AutoGPT",         "name": "AutoGPT Memory",       "description": "وكيل ذاتي التوجيه مع ذاكرة وتقييم ذاتي"},
+            {"id": "OpenInterpreter", "name": "Code Interpreter",     "description": "منفذ كود Python مع تحليل النتائج"},
+            {"id": "Mistral",         "name": "Mistral Specialist",   "description": "وكيل Mistral المتخصص في التفكير والبرمجة"},
+        ],
+        "available_models": available,
+        "model_scores": memory.model_scores,
     }
 
 
-@app.post("/execute", response_model=TaskResponse)
-async def execute_task(req: TaskRequest):
+@app.get("/self-improvement")
+async def self_improvement():
+    """تقرير التحسين الذاتي ونصائح الأداء"""
+    report = memory.generate_self_improvement_report()
+    stats = memory.get_stats()
     available = await get_available_models()
+    
+    suggestions = []
     if not available:
-        raise HTTPException(503, "No Ollama models available.")
-
-    # ── Smart model selection ─────────────────────────────────────────────
-    if req.model and req.model in available:
-        model    = req.model
-        category = classify_task(req.task)
-    else:
-        preferred = PROVIDER_MODELS.get(req.provider, [])
-        provider_model = await pick_best_model(preferred, available)
-
-        if provider_model and req.provider not in ("AutoGPT", "LangGraph", "OpenInterpreter"):
-            model    = provider_model
-            category = classify_task(req.task)
-        else:
-            model, category, _ = select_best_model_py(req.task, available)
-
-    if not model:
-        raise HTTPException(503, f"No model for provider: {req.provider}")
-
-    steps: list[str] = []
-    result: str = ""
-    engine: str = req.provider
-
-    # ── Route to the right agent ──────────────────────────────────────────
-    if req.provider == "LangGraph":
-        # langchain-ai/langgraph — multi-node pipeline
-        graph = build_langgraph_agent(model)
-        state = await graph.ainvoke({
-            "messages": [HumanMessage(content=req.task)],
-            "task":     req.task,
-            "model":    model,
-            "steps":    [],
-            "result":   "",
-            "done":     False,
-            "retries":  0,
-        })
-        steps  = state["steps"]
-        result = state["result"]
-        engine = "LangGraph (langchain-ai/langgraph)"
-
-    elif req.provider == "AutoGPT":
-        # Significant-Gravitas/AutoGPT — iterative goal-seeking
-        out    = await autogpt_agent(req.task, model)
-        steps  = out["steps"]
-        result = out["result"]
-        engine = "AutoGPT (Significant-Gravitas/AutoGPT)"
-
-    elif req.provider == "OpenInterpreter":
-        # OpenInterpreter/open-interpreter — local code execution
-        out    = await open_interpreter_agent(req.task, model)
-        steps  = out["steps"]
-        result = out["result"]
-        engine = "Open Interpreter (OpenInterpreter/open-interpreter)"
-
-    elif req.provider == "mistralai":
-        # mistralai — [INST] formatted prompting
-        out    = await mistral_agent(req.task, model)
-        steps  = out["steps"]
-        result = out["result"]
-        engine = "Mistral AI (mistralai) via Ollama"
-
-    else:
-        # QwenLM, meta-llama, or any Ollama model directly
-        steps.append(f"[{req.provider}:{model}] جاري التنفيذ...")
-        result = await ollama_chat(model, [
-            {"role": "system", "content": f"أنت وكيل ذكاء اصطناعي يستخدم نموذج {model}. نفّذ المهام بدقة."},
-            {"role": "user",   "content": req.task},
-        ], max_tokens=600)
-        steps.append(f"[RESULT] {result}")
-        engine = f"{req.provider} via Ollama"
-
-    return TaskResponse(
-        provider=req.provider,
-        model=model,
-        steps=steps,
-        result=result,
-        category=category,
-        engine=engine,
-    )
+        suggestions.append("تنزيل نماذج: ابدأ بـ qwen2:0.5b و llama3.2:1b")
+    if len(available) < 2:
+        suggestions.append("تنويع النماذج لتغطية أفضل لأنواع المهام")
+    if stats["total_tasks"] == 0:
+        suggestions.append("نفّذ بعض المهام لبدء التعلم الذاتي")
+    
+    return {
+        "report": report,
+        "stats": stats,
+        "suggestions": suggestions,
+        "available_models": available,
+    }
 
 
-@app.post("/pull-model")
-async def pull_model(body: dict):
-    """Pull a new Ollama model."""
-    model_name = body.get("model")
-    if not model_name:
-        raise HTTPException(400, "model name required")
+@app.post("/tools/{tool_name}")
+async def use_tool(tool_name: str, params: dict):
+    """استخدام أداة مباشرةً"""
+    if tool_name not in TOOLS:
+        raise HTTPException(status_code=404, detail=f"الأداة '{tool_name}' غير موجودة")
+    result = await TOOLS[tool_name].execute(params)
+    return {"tool": tool_name, "result": result}
 
-    async def stream_pull():
-        proc = await asyncio.create_subprocess_exec(
-            "ollama", "pull", model_name,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-        )
-        async for line in proc.stdout:
-            yield line.decode()
-        await proc.wait()
 
-    return StreamingResponse(stream_pull(), media_type="text/plain")
+@app.get("/tools")
+async def list_tools():
+    return {
+        "tools": [
+            {"name": name, "description": tool.description}
+            for name, tool in TOOLS.items()
+        ]
+    }
+
+
+# ── تنزيل تلقائي للنماذج الأساسية عند بدء التشغيل ──────────────────────────
+@app.on_event("startup")
+async def startup_event():
+    print("[CortexFlow] بدء تشغيل نظام الوكيل الاحترافي...")
+    available = await get_available_models()
+    print(f"[CortexFlow] النماذج المتاحة: {available}")
+    
+    if not available:
+        print("[CortexFlow] لا توجد نماذج — جاري تنزيل qwen2:0.5b...")
+        asyncio.create_task(ensure_model_available("qwen2:0.5b"))
+    
+    print(f"[CortexFlow] الأدوات المتاحة: {list(TOOLS.keys())}")
+    print("[CortexFlow] النظام جاهز للعمل!")
 
 
 if __name__ == "__main__":

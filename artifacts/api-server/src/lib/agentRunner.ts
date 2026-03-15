@@ -1,13 +1,16 @@
 import { EventEmitter } from "events";
+import axios from "axios";
 import { ollamaClient, ChatMessage } from "./ollamaClient.js";
 import { taskStore, Task } from "./taskStore.js";
 import { browserAgent } from "./browserAgent.js";
-import { selectBestModel, formatModelSelection } from "./modelSelector.js";
+import { selectBestModel, formatModelSelection, modelSelector, classifyTask } from "./modelSelector.js";
 
 const MAX_ITERATIONS = 20;
-const MAX_RETRIES = 2;
+const MAX_RETRIES    = 2;
+const AGENT_SERVICE  = process.env.AGENT_SERVICE_URL || "http://localhost:8090";
 
-// ── Action prompt with few-shot examples ──────────────────────────────────────
+// ── نظام Prompt المتخصص ────────────────────────────────────────────────────
+
 const ACTION_SYSTEM_PROMPT = `You are a browser automation agent. You control a real browser.
 Respond with EXACTLY one line using this format:
 ACTION: <action> | PARAM: <value>
@@ -29,21 +32,34 @@ ACTION: navigate | PARAM: https://www.facebook.com
 User: click the signup button
 ACTION: click | PARAM: Create new account
 
-User: fill the email field with test@mail.com
-ACTION: fill | PARAM: email=test@mail.com
-
-User: submit the form
-ACTION: key | PARAM: Enter
-
 RULES:
 - Output ONLY the ACTION line, nothing else
 - Never say you cannot do something
-- Never explain or apologize
 - Use "done" ONLY after task is fully complete`;
 
+const SYSTEM_PROMPTS: Record<string, string> = {
+  code: `أنت CortexFlow، وكيل برمجة محترف.
+تكتب كوداً نظيفاً وموثّقاً. تحلّل المتطلبات قبل الكتابة. تقدّم شرحاً موجزاً مع الكود.`,
+
+  research: `أنت CortexFlow، وكيل بحث وتحليل متعمق.
+تجمع المعلومات بدقة، تحلّل من زوايا متعددة، وتقدّم ملخصات منظمة وشاملة.`,
+
+  creative: `أنت CortexFlow، وكيل إبداعي متميز.
+تنتج محتوى أصيلاً وجذاباً بأسلوب احترافي. تتكيّف مع أسلوب المستخدم ومتطلباته.`,
+
+  math: `أنت CortexFlow، وكيل رياضيات ومنطق.
+تحلّل المسائل خطوة بخطوة، تتحقق من الحسابات، وتشرح المنطق بوضوح.`,
+
+  reasoning: `أنت CortexFlow، وكيل تفكير استراتيجي.
+تحلّل المواقف من جميع الجوانب، تقيّم الخيارات، وتقدّم توصيات مدعومة بالمنطق.`,
+
+  default: `أنت CortexFlow، وكيل ذكاء اصطناعي احترافي متكامل.
+تنفّذ المهام بكفاءة واحترافية عالية. تردّ بنفس لغة المستخدم.`,
+};
+
+// ── الوكيل الرئيسي ─────────────────────────────────────────────────────────
+
 class AgentRunner extends EventEmitter {
-  private systemPrompt = `أنت CortexFlow، وكيل ذكاء اصطناعي يتحكم في المتصفح.
-نفّذ المهام خطوة بخطوة حتى الاكتمال الكامل. رد بإيجاز بنفس لغة المستخدم.`;
 
   async executeTask(task: Task): Promise<void> {
     const start = Date.now();
@@ -55,10 +71,12 @@ class AgentRunner extends EventEmitter {
       this.emitStep(task.taskId, "MODEL", formatModelSelection(model, category, reason));
       await sleep(200);
 
-      if (task.type === "browser") {
+      if (task.type === "browser" || category === "browser") {
         await this.executeBrowserTask(task, start, model);
+      } else if (this.shouldUsePythonAgent(category)) {
+        await this.executePythonAgent(task, start, model, category);
       } else if (ollamaClient.isAvailable()) {
-        await this.runWithOllama(task, start, model);
+        await this.runWithOllama(task, start, model, category);
       } else {
         await this.simulateWithSteps(task, start);
       }
@@ -67,6 +85,10 @@ class AgentRunner extends EventEmitter {
       taskStore.updateTask(task.taskId, { status: "failed", error: msg });
       this.emit("taskFail", { taskId: task.taskId, error: msg });
     }
+  }
+
+  private shouldUsePythonAgent(category: string): boolean {
+    return ["code", "math", "agent", "reasoning"].includes(category);
   }
 
   private emitStep(taskId: string, step: string, content: string) {
@@ -85,26 +107,78 @@ class AgentRunner extends EventEmitter {
     });
   }
 
+  // ── خدمة Python للمهام المعقدة ─────────────────────────────────────────
+
+  private async executePythonAgent(task: Task, start: number, model: string, category: string): Promise<void> {
+    const taskId = task.taskId;
+    this.emitStep(taskId, "OBSERVE", `توجيه المهمة إلى الوكيل المتخصص في: ${category}`);
+
+    try {
+      const providerMap: Record<string, string> = {
+        code:      "OpenInterpreter",
+        math:      "OODA",
+        agent:     "AutoGPT",
+        reasoning: "LangGraph",
+      };
+      const provider = providerMap[category] || "OODA";
+
+      this.emitStep(taskId, "THINK", `استخدام ${provider} مع نموذج ${model}`);
+
+      const response = await axios.post(`${AGENT_SERVICE}/run`, {
+        task:      task.description,
+        provider,
+        model,
+        task_type: category,
+      }, { timeout: 120000 });
+
+      const data = response.data;
+
+      for (const step of (data.steps || [])) {
+        const match = step.match(/^\[([A-Z_:-]+)\]\s*([\s\S]*)/);
+        if (match) {
+          this.emitStep(taskId, match[1], match[2].trim());
+        } else {
+          this.emitStep(taskId, "ACT", step);
+        }
+        await sleep(100);
+      }
+
+      const result = data.result || "اكتملت المهمة";
+      const duration = Date.now() - start;
+
+      modelSelector.recordResult(model, category, true, duration / 1000, 0.8);
+
+      taskStore.updateTask(taskId, { status: "completed", result });
+      taskStore.addLog({ taskId, agentType: "PythonAgent", action: "task_complete", output: result.substring(0, 300), durationMs: duration });
+      this.emit("taskSuccess", { taskId, result });
+
+    } catch (err: any) {
+      this.emitStep(taskId, "WARN", `خدمة Python غير متاحة — التبديل إلى Ollama المباشر`);
+      await this.runWithOllama(task, start, model, category);
+    }
+  }
+
+  // ── تنفيذ مهام المتصفح ─────────────────────────────────────────────────
+
   private async executeBrowserTask(task: Task, start: number, model: string): Promise<void> {
     const taskId = task.taskId;
 
-    this.emitStep(taskId, "OBSERVE", `تحليل المهمة: "${task.description}"`);
+    this.emitStep(taskId, "OBSERVE", `تحليل مهمة التصفح: "${task.description}"`);
     await sleep(300);
 
     const ready = await browserAgent.initialize();
     if (!ready) {
-      this.emitStep(taskId, "OBSERVE", "تعذّر تشغيل المتصفح — وضع المحاكاة.");
-      await this.simulateWithSteps(task, start);
+      this.emitStep(taskId, "OBSERVE", "تعذّر تشغيل المتصفح — التبديل إلى وضع النص");
+      await this.runWithOllama(task, start, model, "browser");
       return;
     }
 
     const useOllama = ollamaClient.isAvailable();
 
-    // ── THINK ─────────────────────────────────────────────────────────────
     if (useOllama) {
       const thought = await ollamaClient.chat([
-        { role: "system", content: this.systemPrompt },
-        { role: "user", content: `المهمة: "${task.description}"\nما الموقع المستهدف وما الخطوات الكاملة اللازمة لإنجاز المهمة بالكامل؟` },
+        { role: "system", content: SYSTEM_PROMPTS.default },
+        { role: "user", content: `المهمة: "${task.description}"\nما الموقع المستهدف وما الخطوات الكاملة؟` },
       ], { temperature: 0.4, max_tokens: 250, model }).catch(() => "سأنفذ المهمة خطوة بخطوة");
       this.emitStep(taskId, "THINK", thought);
     } else {
@@ -112,14 +186,13 @@ class AgentRunner extends EventEmitter {
     }
     await sleep(200);
 
-    // ── PLAN ──────────────────────────────────────────────────────────────
     const targetUrl = extractUrl(task.description) || task.url;
     if (useOllama) {
       const plan = await ollamaClient.chat([
-        { role: "system", content: this.systemPrompt },
+        { role: "system", content: SYSTEM_PROMPTS.default },
         { role: "user", content: `المهمة: "${task.description}". اذكر خطوات التنفيذ بإيجاز.` },
       ], { temperature: 0.3, max_tokens: 200, model }).catch(() => "");
-      this.emitStep(taskId, "PLAN", plan || `الانتقال إلى الموقع وتنفيذ الإجراءات المطلوبة`);
+      this.emitStep(taskId, "PLAN", plan || `الانتقال إلى الموقع وتنفيذ الإجراءات`);
     } else {
       this.emitStep(taskId, "PLAN", targetUrl
         ? `1. الانتقال إلى ${targetUrl}\n2. تنفيذ الإجراءات\n3. التحقق`
@@ -127,28 +200,23 @@ class AgentRunner extends EventEmitter {
     }
     await sleep(200);
 
-    // ── ACT: اجبر التنقل أولاً قبل دخول الحلقة ───────────────────────────
     this.emitStep(taskId, "ACT", `بدء التنفيذ بنموذج ${model}...`);
 
     let finalResult = "";
 
     if (!useOllama) {
-      // بدون Ollama: فقط انتقل للموقع
       if (targetUrl) {
-        this.emitStep(taskId, "ACT", `الانتقال إلى: ${targetUrl}`);
         await browserAgent.navigate(targetUrl).catch(() => {});
         finalResult = `تم الانتقال إلى: ${await browserAgent.getCurrentUrl()}`;
         this.emitStep(taskId, "ACT", finalResult);
       }
     } else {
-      // ── الخطوة 0: انتقل للموقع مباشرة إن كنا نعرفه ─────────────────
       if (targetUrl) {
         this.emitStep(taskId, "ACT", `خطوة 0: navigate → ${targetUrl}`);
         await browserAgent.navigate(targetUrl).catch(() => {});
         await sleep(1500);
       }
 
-      // ── حلقة الوكيل ────────────────────────────────────────────────
       const history: ChatMessage[] = [{ role: "system", content: ACTION_SYSTEM_PROMPT }];
       let consecutiveFails = 0;
 
@@ -157,7 +225,6 @@ class AgentRunner extends EventEmitter {
         const struct  = await browserAgent.getPageStructure();
         const content = await browserAgent.getPageContent();
 
-        // وصف الحالة بالإنجليزية ليفهمه النموذج بشكل أفضل
         const pageState = [
           `Task: ${task.description}`,
           `Current URL: ${url}`,
@@ -181,21 +248,17 @@ class AgentRunner extends EventEmitter {
         }
 
         history.push({ role: "assistant", content: raw });
-
         const parsed = parseAction(raw);
 
         if (!parsed) {
           consecutiveFails++;
           this.emitStep(taskId, "ACT", `(رد غير منظّم — محاولة تصحيح...)`);
-
-          // حاول استخراج URL مباشر من الرد
           const fallbackUrl = extractUrlFromText(raw);
           if (fallbackUrl) {
             this.emitStep(taskId, "ACT", `خطوة ${i}: navigate → ${fallbackUrl}`);
             await browserAgent.navigate(fallbackUrl).catch(() => {});
             consecutiveFails = 0;
           } else if (consecutiveFails >= 3) {
-            // أرسل تصحيحاً صارماً للنموذج
             history.push({
               role: "user",
               content: `IMPORTANT: You must respond with EXACTLY this format:\nACTION: navigate | PARAM: https://...\nDo NOT explain. ONE line only.`,
@@ -233,38 +296,47 @@ class AgentRunner extends EventEmitter {
       }
     }
 
-    // ── VERIFY ────────────────────────────────────────────────────────────
     let verifyResult = finalResult;
     if (useOllama) {
       const url = await browserAgent.getCurrentUrl();
       verifyResult = await ollamaClient.chat([
         { role: "system", content: "لخّص نتيجة المهمة بجملة أو جملتين." },
-        { role: "user", content: `المهمة: "${task.description}"\nالنتيجة: ${finalResult}\nURL الحالي: ${url}\nهل اكتملت؟ لخّص ما تم.` },
+        { role: "user", content: `المهمة: "${task.description}"\nالنتيجة: ${finalResult}\nURL الحالي: ${url}\nلخّص ما تم.` },
       ], { max_tokens: 150, model }).catch(() => finalResult);
     }
 
     this.emitStep(taskId, "VERIFY", verifyResult);
+
+    const duration = Date.now() - start;
+    modelSelector.recordResult(model, "browser", true, duration / 1000, 0.7);
+
     taskStore.updateTask(taskId, { status: "completed", result: verifyResult });
-    taskStore.addLog({ taskId, agentType: "AgentRunner", action: "task_complete", output: verifyResult.substring(0, 300), durationMs: Date.now() - start });
+    taskStore.addLog({ taskId, agentType: "AgentRunner", action: "task_complete", output: verifyResult.substring(0, 300), durationMs: duration });
     this.emit("taskSuccess", { taskId, result: verifyResult });
   }
 
-  private async runWithOllama(task: Task, start: number, model: string): Promise<void> {
+  // ── تنفيذ مباشر مع Ollama ───────────────────────────────────────────────
+
+  private async runWithOllama(task: Task, start: number, model: string, category: string): Promise<void> {
+    const systemPrompt = SYSTEM_PROMPTS[category] || SYSTEM_PROMPTS.default;
     const steps = ["OBSERVE", "THINK", "PLAN", "ACT", "VERIFY"];
+
     const prompts: Record<string, string> = {
-      OBSERVE: `المهمة: "${task.description}"\nحلّل المتطلبات.`,
-      THINK:   `ما أفضل طريقة لتنفيذ المهمة بالكامل؟`,
-      PLAN:    `خطة تنفيذ مفصّلة لـ: "${task.description}"`,
-      ACT:     `نفّذ المهمة وقدّم النتيجة الفعلية.`,
-      VERIFY:  `هل اكتملت المهمة؟ لخّص ما تم.`,
+      OBSERVE: `المهمة: "${task.description}"\nحلّل المتطلبات وحدد التحديات.`,
+      THINK:   `ما أفضل طريقة لتنفيذ المهمة بالكامل؟ فكّر بعمق.`,
+      PLAN:    `ضع خطة تنفيذ مفصّلة ومرقمة لـ: "${task.description}"`,
+      ACT:     `نفّذ المهمة الآن وقدّم النتيجة الكاملة والمفصّلة.`,
+      VERIFY:  `راجع النتيجة وتحقق من اكتمالها. لخّص ما تم إنجازه.`,
     };
-    const messages: ChatMessage[] = [{ role: "system", content: this.systemPrompt }];
+
+    const messages: ChatMessage[] = [{ role: "system", content: systemPrompt }];
     let finalResult = "";
 
     for (const step of steps) {
       messages.push({ role: "user", content: prompts[step] });
       try {
-        const resp = await ollamaClient.chat(messages, { temperature: 0.4, max_tokens: 400, model });
+        const maxTokens = step === "ACT" ? 800 : step === "VERIFY" ? 300 : 400;
+        const resp = await ollamaClient.chat(messages, { temperature: 0.35, max_tokens: maxTokens, model });
         messages.push({ role: "assistant", content: resp });
         this.emitStep(task.taskId, step, resp);
         if (step === "ACT" || step === "VERIFY") finalResult = resp;
@@ -274,18 +346,23 @@ class AgentRunner extends EventEmitter {
       await sleep(200);
     }
 
+    const duration = Date.now() - start;
+    modelSelector.recordResult(model, category, true, duration / 1000, 0.6);
+
     taskStore.updateTask(task.taskId, { status: "completed", result: finalResult });
-    taskStore.addLog({ taskId: task.taskId, agentType: "AgentRunner", action: "task_complete", output: finalResult.substring(0, 300), durationMs: Date.now() - start });
+    taskStore.addLog({ taskId: task.taskId, agentType: "AgentRunner", action: "task_complete", output: finalResult.substring(0, 300), durationMs: duration });
     this.emit("taskSuccess", { taskId: task.taskId, result: finalResult });
   }
+
+  // ── وضع المحاكاة (بدون نماذج) ─────────────────────────────────────────
 
   private async simulateWithSteps(task: Task, start: number): Promise<void> {
     const content: Record<string, string> = {
       OBSERVE: `تحليل المهمة: "${task.description}".`,
-      THINK:   `التفكير في طريقة التنفيذ.`,
+      THINK:   `تحديد أفضل نهج للتنفيذ.`,
       PLAN:    `الخطة:\n1. تهيئة الأدوات\n2. تنفيذ الإجراءات\n3. التحقق`,
-      ACT:     `وضع المحاكاة. لتفعيل التنفيذ الحقيقي، تأكد من تشغيل Ollama.`,
-      VERIFY:  `اكتملت المحاكاة. الوكيل جاهز.`,
+      ACT:     `⚠️ لا توجد نماذج مثبتة بعد. يتم تنزيل النماذج في الخلفية...\nاستخدم قسم "النماذج" لتتبع التنزيل.`,
+      VERIFY:  `سيتوفر التنفيذ الكامل فور اكتمال تنزيل النماذج.`,
     };
     for (const step of ["OBSERVE", "THINK", "PLAN", "ACT", "VERIFY"]) {
       await sleep(500);
@@ -298,31 +375,25 @@ class AgentRunner extends EventEmitter {
   }
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+// ── دوال مساعدة ────────────────────────────────────────────────────────────
 
 function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
 function parseAction(text: string): { action: string; param: string } | null {
   if (!text) return null;
-
-  // الصيغة الرسمية
   const m = text.match(/ACTION:\s*(\w+)\s*\|\s*PARAM:\s*(.+)/i);
   if (m) {
     const action = m[1].toLowerCase().trim();
-    let param = m[2].trim().split("\n")[0].trim(); // سطر واحد فقط
-
+    let param = m[2].trim().split("\n")[0].trim();
     if (action === "navigate") {
       param = cleanUrl(param);
       if (!param || isBlank(param)) return null;
     }
     return { action, param };
   }
-
-  // done بدون صيغة
   if (/\b(task complete|task done|completed|done)\b/i.test(text)) {
     return { action: "done", param: text.substring(0, 100) };
   }
-
   return null;
 }
 
@@ -384,41 +455,28 @@ async function executeAction(action: string, param: string): Promise<void> {
 
 function extractUrl(text: string): string | null {
   const siteMap: Record<string, string> = {
-    "يوتيوب": "https://www.youtube.com",
-    "youtube": "https://www.youtube.com",
-    "فيسبوك": "https://www.facebook.com",
-    "facebook": "https://www.facebook.com",
-    "تويتر": "https://www.twitter.com",
-    "twitter": "https://www.twitter.com",
-    "جوجل": "https://www.google.com",
-    "google": "https://www.google.com",
-    "انستجرام": "https://www.instagram.com",
-    "instagram": "https://www.instagram.com",
-    "جيتهاب": "https://www.github.com",
-    "github": "https://www.github.com",
-    "لينكدإن": "https://www.linkedin.com",
-    "linkedin": "https://www.linkedin.com",
-    "ريديت": "https://www.reddit.com",
-    "reddit": "https://www.reddit.com",
-    "تيك توك": "https://www.tiktok.com",
-    "tiktok": "https://www.tiktok.com",
-    "أمازون": "https://www.amazon.com",
-    "amazon": "https://www.amazon.com",
-    "واتساب": "https://web.whatsapp.com",
-    "whatsapp": "https://web.whatsapp.com",
+    "يوتيوب": "https://www.youtube.com", "youtube": "https://www.youtube.com",
+    "فيسبوك": "https://www.facebook.com", "facebook": "https://www.facebook.com",
+    "تويتر": "https://www.twitter.com", "twitter": "https://www.twitter.com",
+    "جوجل": "https://www.google.com", "google": "https://www.google.com",
+    "انستجرام": "https://www.instagram.com", "instagram": "https://www.instagram.com",
+    "جيتهاب": "https://www.github.com", "github": "https://www.github.com",
+    "لينكدإن": "https://www.linkedin.com", "linkedin": "https://www.linkedin.com",
+    "ريديت": "https://www.reddit.com", "reddit": "https://www.reddit.com",
+    "تيك توك": "https://www.tiktok.com", "tiktok": "https://www.tiktok.com",
+    "أمازون": "https://www.amazon.com", "amazon": "https://www.amazon.com",
+    "واتساب": "https://web.whatsapp.com", "whatsapp": "https://web.whatsapp.com",
+    "ويكيبيديا": "https://ar.wikipedia.org", "wikipedia": "https://en.wikipedia.org",
+    "ستاك اوفرفلو": "https://stackoverflow.com", "stackoverflow": "https://stackoverflow.com",
   };
-
   const lower = text.toLowerCase();
   for (const [key, url] of Object.entries(siteMap)) {
     if (lower.includes(key.toLowerCase())) return url;
   }
-
   const urlMatch = text.match(/https?:\/\/[^\s]+/i);
   if (urlMatch) return urlMatch[0];
-
   const domainMatch = text.match(/(?:افتح|اذهب|تصفح|open|visit|go to)\s+([a-z0-9.-]+\.[a-z]{2,})/i);
   if (domainMatch) return `https://${domainMatch[1]}`;
-
   return null;
 }
 

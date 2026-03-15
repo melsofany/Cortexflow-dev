@@ -2,7 +2,7 @@
 
 ## Overview
 
-CortexFlow is a full-featured AI agent browser platform with a dark cyberpunk UI. It supports local Ollama models (Llama, Mistral, Qwen, DeepSeek-r1, etc.) and falls back to simulation mode when Ollama is not running.
+CortexFlow is a professional AI agent system that automatically selects the best local model (via Ollama) based on task type, executes tasks using advanced agent loops (OODA, LangGraph, AutoGPT, Code Interpreter, Mistral), downloads model weights automatically, and self-improves over time.
 
 ## Stack
 
@@ -11,68 +11,81 @@ CortexFlow is a full-featured AI agent browser platform with a dark cyberpunk UI
 - **Package manager**: pnpm
 - **TypeScript version**: 5.9
 - **API framework**: Express 5 + Socket.io
-- **Database**: In-memory (TaskStore) — no external DB needed
 - **Frontend**: React + Vite + Tailwind CSS + Framer Motion
-- **AI**: Ollama (local), DeepSeek (cloud), Mistral, Qwen — via IntegrationsManager
-- **Validation**: Zod (`zod/v4`), generated via Orval from OpenAPI
-- **Build**: esbuild (CJS bundle for API), Vite (frontend)
+- **AI Runtime**: Ollama (local CPU inference) → Python FastAPI agent service
+- **Agent Loops**: OODA (primary), LangGraph, AutoGPT, Code Interpreter, Mistral
+- **Agent Tools**: execute_code, calculate, read_file, write_file, web_search (DuckDuckGo), run_shell
+
+## Architecture
+
+```text
+User (Frontend App.tsx)
+  ↓  socket.io /api/socket
+API Server (Express, port 8080)
+  ↓  agentRunner.ts → classifies task
+  ├── Browser Agent (Playwright/Chromium) → for browser tasks
+  └── Python Agent Service (port 8090)   → for AI/code/research tasks
+        ↓
+      OODA / LangGraph / AutoGPT / CodeInterpreter / Mistral
+        ↓
+      Ollama (port 11434) → llama3.2:1b / qwen2:0.5b / llama3.2:3b
+```
 
 ## Structure
 
 ```text
 artifacts/
-├── api-server/         # Express 5 + Socket.io backend
+├── agent-service/          # Python FastAPI — OODA/LangGraph/AutoGPT/tools
+│   └── main.py
+├── api-server/             # Express 5 + Socket.io backend
 │   └── src/
-│       ├── lib/        # ollamaClient, taskStore, agentRunner
-│       └── routes/     # health, tasks, ai, logs
-└── cortexflow/         # React + Vite frontend
+│       ├── lib/            # ollamaClient, taskStore, agentRunner, modelSelector
+│       └── routes/         # health, tasks, ai, providers, logs
+└── cortexflow/             # React + Vite frontend
     └── src/
-        ├── components/ # chat-interface, thinking-steps, browser-view, task-sidebar
-        ├── hooks/      # use-socket, use-agent-state
-        └── pages/      # dashboard
+        ├── components/     # chat-interface, thinking-steps, browser-view, task-sidebar
+        └── App.tsx         # Main app with auto task classification
 lib/
-├── api-spec/           # OpenAPI spec + Orval codegen config
-├── api-client-react/   # Generated React Query hooks
-└── api-zod/            # Generated Zod schemas
+├── api-spec/               # OpenAPI spec + Orval codegen config
+├── api-client-react/       # Generated React Query hooks
+└── api-zod/                # Generated Zod schemas
 ```
 
 ## Key Features
 
-- **Real-time task execution** via Socket.io (path: `/api/socket`)
-- **AI thinking steps**: OBSERVE → THINK → PLAN → ACT → VERIFY
-- **Multi-model support**: Ollama local models (auto-detected), simulation fallback
-- **Browser agent control panel** with tab navigation
-- **Task management**: create, execute, monitor tasks with status tracking
-- **Execution logs** viewer
-- **Arabic + English UI** support (thinking step labels in Arabic)
+- **Auto task classification**: browser / system / research / ai — no manual selection needed
+- **OODA Loop**: Observe → Orient → Decide → Act loop with tool calls
+- **Self-improvement**: PerformanceMemory records success/failure/quality per model per category
+- **Smart model routing**: SelfImprovingModelSelector with 9 task categories and dynamic learned scores
+- **Agent tools**: execute_code, calculate, read_file, write_file, web_search, run_shell
+- **Real-time updates**: Socket.io streaming with thinking steps display
+- **Arabic + English UI** support
 
-## AI Models
+## Services & Ports
 
-The platform uses Ollama for local AI. To enable real AI:
-1. Install Ollama: https://ollama.ai
-2. Pull a model: `ollama pull llama3`
-3. Ollama runs at `localhost:11434` — auto-detected on startup
+| Service            | Port  | Notes                           |
+|--------------------|-------|---------------------------------|
+| Ollama             | 11434 | Local LLM inference (CPU)       |
+| Python Agent       | 8090  | FastAPI OODA/LangGraph/AutoGPT  |
+| API Server         | 8080  | Express + Socket.io             |
+| CortexFlow UI      | 18188 | React + Vite                    |
 
-Without Ollama, the system runs in simulation mode with informative responses.
+## AI Models (Ollama)
 
-## API Endpoints
+| Model          | Size  | Best For                    |
+|----------------|-------|-----------------------------|
+| qwen2:0.5b     | 352MB | Quick tasks, chat, math     |
+| llama3.2:1b    | 1.3GB | General reasoning, research |
+| llama3.2:3b    | 2.0GB | Complex reasoning (DL)      |
 
-- `GET /api/healthz` — Health check + Ollama status
-- `GET /api/tasks` — List all tasks
-- `POST /api/tasks` — Create task (`description`, `type`: browser/system/ai/research)
-- `GET /api/tasks/:id` — Get task
-- `POST /api/tasks/:id/execute` — Execute task (AI agent runs through steps)
-- `GET /api/ai/models` — List available Ollama models
-- `POST /api/ai/chat` — Chat with AI (`messages` array)
-- `GET /api/logs` — Get execution logs
+## Self-Improvement Endpoints
 
-## Socket.io Events
+- `GET /self-improvement` — view performance stats per model per category
+- `POST /self-improvement/reset` — reset learned scores
+- `GET /self-improvement/report` — generate improvement suggestions
 
-Server emits: `taskCreated`, `taskStart`, `taskSuccess`, `taskFail`, `thinking`, `taskUpdate`, `status`
-Client emits: `submitTask`, `executeTask`, `getStatus`
+## Known Performance Notes
 
-## Root Scripts
-
-- `pnpm run build` — runs typecheck then builds all packages
-- `pnpm run typecheck` — full TypeScript check across all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate Zod + React Query hooks
+- All inference runs on CPU (no GPU) — each LLM call takes 15-60s depending on model size
+- OODA loop makes 5+ LLM calls per task (cold start ~2min, warm ~1min)
+- Model auto-selection prefers smaller models for speed unless performance data shows better results

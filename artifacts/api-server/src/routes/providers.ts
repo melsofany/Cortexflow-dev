@@ -1,0 +1,67 @@
+import { Router, type IRouter } from "express";
+import axios from "axios";
+
+const router: IRouter = Router();
+const AGENT_SERVICE = "http://localhost:8090";
+
+// List all providers and their installed models
+router.get("/providers", async (_req, res) => {
+  try {
+    const resp = await axios.get(`${AGENT_SERVICE}/models`, { timeout: 5000 });
+    res.json(resp.data);
+  } catch {
+    res.status(503).json({ error: "Agent service unavailable" });
+  }
+});
+
+// List installed Ollama models
+router.get("/providers/models", async (_req, res) => {
+  try {
+    const resp = await axios.get(`${AGENT_SERVICE}/health`, { timeout: 5000 });
+    res.json({ models: resp.data.available_models, providers: resp.data.providers });
+  } catch {
+    res.status(503).json({ error: "Agent service unavailable" });
+  }
+});
+
+// Execute a task via a specific provider (LangGraph, AutoGPT, meta-llama, etc.)
+router.post("/providers/execute", async (req, res) => {
+  const { task, provider, model } = req.body;
+  if (!task) {
+    res.status(400).json({ error: "task is required" });
+    return;
+  }
+  try {
+    const resp = await axios.post(
+      `${AGENT_SERVICE}/execute`,
+      { task, provider: provider || "QwenLM", model },
+      { timeout: 180000 }
+    );
+    res.json(resp.data);
+  } catch (err: any) {
+    const msg = err.response?.data?.detail || err.message || "Execution failed";
+    res.status(500).json({ error: msg });
+  }
+});
+
+// Pull a new model from Ollama registry
+router.post("/providers/pull-model", async (req, res) => {
+  const { model } = req.body;
+  if (!model) {
+    res.status(400).json({ error: "model name required" });
+    return;
+  }
+  try {
+    const resp = await axios.post(
+      `${AGENT_SERVICE}/pull-model`,
+      { model },
+      { responseType: "stream", timeout: 600000 }
+    );
+    res.setHeader("Content-Type", "text/plain");
+    resp.data.pipe(res);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+export default router;

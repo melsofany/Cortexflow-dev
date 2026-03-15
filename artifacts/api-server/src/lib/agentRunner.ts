@@ -268,9 +268,23 @@ function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 function parseAction(text: string): { action: string; param: string } | null {
   // Match: ACTION: xxx | PARAM: yyy
   const m = text.match(/ACTION:\s*(\w+)\s*\|\s*PARAM:\s*(.+)/i);
-  if (m) return { action: m[1].toLowerCase().trim(), param: m[2].trim() };
+  if (m) {
+    const action = m[1].toLowerCase().trim();
+    let param = m[2].trim();
+    // Strip any accidental "URL:" prefix the model might add
+    if (action === "navigate") {
+      param = param.replace(/^url:\s*/i, "").trim();
+      // Ensure valid URL
+      if (!param.startsWith("http") && !param.startsWith("about:")) {
+        param = "https://" + param;
+      }
+      // Skip blank/invalid navigate
+      if (param === "about:blank" || param === "https://about:blank") return null;
+    }
+    return { action, param };
+  }
 
-  // Fallback: "done" anywhere means task complete
+  // Fallback: detect "done" keyword
   if (/\bdone\b/i.test(text)) {
     return { action: "done", param: text.replace(/\bdone\b/i, "").trim() || "اكتملت المهمة" };
   }

@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "python-3.11"]
 
 [[artifacts]]
 id = "artifacts/api-server"
@@ -26,6 +26,10 @@ author = "agent"
 task = "workflow.run"
 args = "Ollama Server"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Agent Service (Python)"
+
 [[workflows.workflow]]
 name = "Ollama Server"
 author = "agent"
@@ -33,6 +37,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "ollama serve"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "Agent Service (Python)"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "AGENT_SERVICE_PORT=8090 python3.11 /home/runner/workspace/artifacts/agent-service/main.py"
 
 [workflows.workflow.metadata]
 outputType = "console"

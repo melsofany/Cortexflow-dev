@@ -3,6 +3,7 @@ import { TaskCategory } from "./modelSelector.js";
 
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
 const DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1";
+const OLLAMA_BASE_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 
 const CLASSIFY_PROMPT = `You are a task classifier for an AI agent system. Classify the user's task into EXACTLY ONE of these categories:
 
@@ -19,39 +20,34 @@ const CLASSIFY_PROMPT = `You are a task classifier for an AI agent system. Class
 
 Respond with ONLY the category name in lowercase, nothing else. No explanation.`;
 
-let deepseekAvailable: boolean | null = null;
+const VALID_CATEGORIES: TaskCategory[] = [
+  "browser", "code", "research", "creative", "math",
+  "translation", "reasoning", "file", "agent", "simple",
+];
+
+let cloudAvailable: boolean | null = null;
+let localDeepSeekModel: string | null = null;
 let lastCheck = 0;
 
-async function checkDeepSeekAvailable(): Promise<boolean> {
+async function getLocalDeepSeekModel(): Promise<string | null> {
   const now = Date.now();
-  if (deepseekAvailable !== null && now - lastCheck < 60000) {
-    return deepseekAvailable;
-  }
-  if (!DEEPSEEK_API_KEY) {
-    deepseekAvailable = false;
-    return false;
-  }
+  if (localDeepSeekModel !== null && now - lastCheck < 30000) return localDeepSeekModel;
   try {
-    const res = await axios.get(`${DEEPSEEK_BASE_URL}/models`, {
-      headers: { Authorization: `Bearer ${DEEPSEEK_API_KEY}` },
-      timeout: 3000,
-    });
-    deepseekAvailable = res.status === 200;
+    const res = await axios.get(`${OLLAMA_BASE_URL}/api/tags`, { timeout: 3000 });
+    const models: Array<{ name: string }> = res.data?.models || [];
+    const ds = models.find(m => m.name.startsWith("deepseek"));
+    localDeepSeekModel = ds?.name || null;
+    lastCheck = now;
+    return localDeepSeekModel;
   } catch {
-    deepseekAvailable = false;
+    return null;
   }
-  lastCheck = now;
-  return deepseekAvailable;
 }
 
-export async function classifyWithDeepSeek(
-  taskDescription: string
-): Promise<{ category: TaskCategory; confidence: "high" | "low"; source: "deepseek" | "fallback" }> {
-  const available = await checkDeepSeekAvailable();
+async function classifyViaCloudDeepSeek(taskDescription: string): Promise<TaskCategory | null> {
+  if (!DEEPSEEK_API_KEY) return null;
 
-  if (!available) {
-    return { category: "simple", confidence: "low", source: "fallback" };
-  }
+  if (cloudAvailable === false) return null;
 
   try {
     const response = await axios.post(
@@ -73,30 +69,61 @@ export async function classifyWithDeepSeek(
         timeout: 5000,
       }
     );
-
     const raw = response.data?.choices?.[0]?.message?.content?.trim().toLowerCase() ?? "";
-
-    const validCategories: TaskCategory[] = [
-      "browser", "code", "research", "creative", "math",
-      "translation", "reasoning", "file", "agent", "simple",
-    ];
-
-    const matched = validCategories.find(c => raw.includes(c));
-
+    cloudAvailable = true;
+    const matched = VALID_CATEGORIES.find(c => raw.includes(c));
     if (matched) {
-      console.log(`[DeepSeek] Classified "${taskDescription.slice(0, 50)}" → ${matched}`);
-      return { category: matched, confidence: "high", source: "deepseek" };
+      console.log(`[DeepSeek Cloud] Classified "${taskDescription.slice(0, 50)}" → ${matched}`);
+      return matched;
     }
-
-    console.warn(`[DeepSeek] Unexpected response: "${raw}" — falling back`);
-    return { category: "simple", confidence: "low", source: "fallback" };
-
-  } catch (err: any) {
-    console.warn(`[DeepSeek] Classification error: ${err.message}`);
-    deepseekAvailable = false;
-    lastCheck = Date.now();
-    return { category: "simple", confidence: "low", source: "fallback" };
+    return null;
+  } catch {
+    cloudAvailable = false;
+    return null;
   }
+}
+
+async function classifyViaLocalDeepSeek(taskDescription: string): Promise<TaskCategory | null> {
+  const model = await getLocalDeepSeekModel();
+  if (!model) return null;
+
+  try {
+    const response = await axios.post(
+      `${OLLAMA_BASE_URL}/api/chat`,
+      {
+        model,
+        messages: [
+          { role: "system", content: CLASSIFY_PROMPT },
+          { role: "user", content: taskDescription },
+        ],
+        stream: false,
+        options: { temperature: 0, num_predict: 20 },
+      },
+      { timeout: 15000 }
+    );
+    const raw: string = response.data?.message?.content?.trim().toLowerCase() ?? "";
+    const matched = VALID_CATEGORIES.find(c => raw.includes(c));
+    if (matched) {
+      console.log(`[DeepSeek Local (${model})] Classified "${taskDescription.slice(0, 50)}" → ${matched}`);
+      return matched;
+    }
+    return null;
+  } catch (err: any) {
+    console.warn(`[DeepSeek Local] Classification error: ${err.message}`);
+    return null;
+  }
+}
+
+export async function classifyWithDeepSeek(
+  taskDescription: string
+): Promise<{ category: TaskCategory; confidence: "high" | "low"; source: "deepseek" | "fallback" }> {
+  const cloudResult = await classifyViaCloudDeepSeek(taskDescription);
+  if (cloudResult) return { category: cloudResult, confidence: "high", source: "deepseek" };
+
+  const localResult = await classifyViaLocalDeepSeek(taskDescription);
+  if (localResult) return { category: localResult, confidence: "high", source: "deepseek" };
+
+  return { category: "simple", confidence: "low", source: "fallback" };
 }
 
 export function isDeepSeekConfigured(): boolean {

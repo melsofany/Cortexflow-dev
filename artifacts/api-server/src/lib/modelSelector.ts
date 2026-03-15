@@ -134,6 +134,18 @@ interface ModelProfile {
 
 const MODEL_PROFILES: ModelProfile[] = [
   {
+    name: "deepseek-r1:1.5b",
+    strengths: ["browser", "code", "research", "creative", "math", "reasoning", "agent", "translation", "file", "simple"],
+    speed: "medium", size: 1100,
+    baseScores: { browser: 0.95, code: 0.95, research: 0.95, creative: 0.9, math: 0.95, translation: 0.9, reasoning: 0.98, agent: 0.95, file: 0.9, simple: 0.9 },
+  },
+  {
+    name: "deepseek-r1:7b",
+    strengths: ["browser", "code", "research", "creative", "math", "reasoning", "agent", "translation", "file", "simple"],
+    speed: "slow", size: 4700,
+    baseScores: { browser: 0.97, code: 0.97, research: 0.97, creative: 0.95, math: 0.97, translation: 0.93, reasoning: 0.99, agent: 0.97, file: 0.95, simple: 0.9 },
+  },
+  {
     name: "qwen2:0.5b",
     strengths: ["simple", "translation"],
     speed: "fast", size: 352,

@@ -30,7 +30,7 @@ class OllamaClient {
       this.available = true;
       this.initialized = true;
 
-      const preferred = ["deepseek-r1", "llama3", "llama2", "mistral", "qwen2", "qwen", "phi3", "gemma"];
+      const preferred = ["deepseek-r1", "deepseek", "llama3", "llama2", "mistral", "phi3", "gemma", "qwen2", "qwen"];
       for (const name of preferred) {
         const found = models.find((m) => m.name.startsWith(name));
         if (found) {

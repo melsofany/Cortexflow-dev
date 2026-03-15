@@ -577,25 +577,27 @@ async def ollama_stream(model: str, messages: list[dict], max_tokens: int = 1000
 #  Observe → Orient → Decide → Act (مثل Manus/Claude)
 # ══════════════════════════════════════════════════════════════════════════════
 
-MASTER_SYSTEM_PROMPT = """أنت CortexFlow، وكيل ذكاء اصطناعي احترافي متكامل.
+MASTER_SYSTEM_PROMPT = """أنت CortexFlow، وكيل ذكاء اصطناعي. أجب دائماً بنفس لغة المستخدم.
 
-قدراتك:
+أدواتك:
 {tools}
 
-مبادئك:
-1. حلّل المهمة بعمق قبل التنفيذ
-2. استخدم الأدوات المناسبة تلقائياً
-3. نفّذ خطوة بخطوة مع التحقق من كل نتيجة
-4. إذا أخفقت محاولة، جرّب نهجاً آخر
-5. قدّم نتيجة شاملة ومنظمة
-
-للاستخدام أداة، اكتب:
-TOOL: <اسم الأداة>
+للاستخدام أداة:
+TOOL: <اسم_الأداة>
 PARAMS: {{"مفتاح": "قيمة"}}
 
-للانتهاء من المهمة، اكتب:
-RESULT: <النتيجة النهائية>
+للإنهاء:
+RESULT: <النتيجة>
 """.format(tools=TOOLS_DESCRIPTION)
+
+# Prompt مبسّط للمهام التي لا تحتاج أدوات
+SIMPLE_SYSTEM_PROMPT = "أنت CortexFlow، مساعد ذكاء اصطناعي محترف. أجب دائماً بنفس لغة المستخدم. قدّم إجابة مباشرة وشاملة."
+
+# الفئات التي تحتاج أدوات فقط
+TOOL_CATEGORIES = {"code", "math", "file", "agent"}
+
+# الفئات التي تُجاب مباشرة بدون OODA معقد
+DIRECT_CATEGORIES = {"simple", "creative", "research", "translation", "reasoning", "browser"}
 
 
 async def parse_and_execute_tool(response: str) -> tuple[str | None, str | None]:
@@ -626,98 +628,121 @@ async def parse_and_execute_tool(response: str) -> tuple[str | None, str | None]
 
 async def ooda_agent(task: str, model: str, category: str, max_iterations: int = 8) -> dict:
     """
-    OODA Loop Agent — الوكيل الاحترافي الرئيسي
-    Observe → Orient → Decide → Act
+    OODA Loop Agent — وكيل ذكي يختار المسار المناسب حسب نوع المهمة:
+    - المهام المباشرة (simple/creative/research/translation/reasoning): إجابة مباشرة
+    - المهام المعقدة (code/math/file/agent): OODA كامل مع أدوات
     """
     steps = []
     start_time = time.time()
-    messages = [{"role": "system", "content": MASTER_SYSTEM_PROMPT}]
-
-    # ── مرحلة المراقبة (Observe) ─────────────────────────────────────────
-    observe_prompt = f"""المهمة: {task}
-نوع المهمة: {category}
-
-1. حلّل المهمة وحدد:
-   - ما المطلوب بالضبط؟
-   - هل تحتاج أدوات؟ أيها؟
-   - ما التحديات المحتملة؟"""
-
-    messages.append({"role": "user", "content": observe_prompt})
-    observation, obs_src = await smart_chat(model, messages, max_tokens=400, step_name="OBSERVE")
-    messages.append({"role": "assistant", "content": observation})
-    src_tag = " [🤖DS]" if obs_src == "deepseek" else ""
-    steps.append(f"[OBSERVE]{src_tag} {observation}")
-
-    # ── مرحلة التوجه (Orient) ────────────────────────────────────────────
-    orient_prompt = """بناءً على تحليلك، حدد:
-1. الاستراتيجية المثلى للتنفيذ
-2. الخطوات المتسلسلة (مرقمة)
-3. الأدوات المطلوبة إن وجدت"""
-
-    messages.append({"role": "user", "content": orient_prompt})
-    orientation, ori_src = await smart_chat(model, messages, max_tokens=400, step_name="ORIENT")
-    messages.append({"role": "assistant", "content": orientation})
-    src_tag = " [🤖DS]" if ori_src == "deepseek" else ""
-    steps.append(f"[ORIENT]{src_tag} {orientation}")
-
-    # ── مرحلة التنفيذ (Decide + Act) ────────────────────────────────────
     final_result = ""
-    iterations = 0
+    iterations = 1
 
-    for i in range(max_iterations):
-        iterations += 1
-        
-        if i == 0:
-            act_prompt = f"""الآن نفّذ المهمة: {task}
+    # ══ المسار المباشر: للمهام التي لا تحتاج أدوات ══
+    if category in DIRECT_CATEGORIES:
+        system_prompt = SIMPLE_SYSTEM_PROMPT
+        category_hints = {
+            "simple":      "أجب بإيجاز ووضوح.",
+            "creative":    "قدّم محتوى إبداعياً وأصيلاً ومنظماً.",
+            "research":    "قدّم معلومات دقيقة وشاملة ومنظمة.",
+            "translation": "قدّم الترجمة الدقيقة مباشرةً.",
+            "reasoning":   "حلّل المسألة خطوة بخطوة ثم قدّم توصيتك.",
+            "browser":     "اشرح ما يجب فعله للوصول للهدف.",
+        }
+        hint = category_hints.get(category, "")
 
-إذا احتجت أداة، استخدم صيغة:
-TOOL: <اسم>
-PARAMS: {{"مفتاح": "قيمة"}}
+        # خطوة واحدة: THINK
+        think_resp, think_src = await smart_chat(model, [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"{task}\n\n{hint}"},
+        ], max_tokens=600, temperature=0.3, step_name="THINK")
+        src_tag = " [🤖DS]" if think_src == "deepseek" else ""
+        steps.append(f"[THINK]{src_tag} {think_resp}")
+        final_result = think_resp
 
-إذا انتهيت، اكتب:
-RESULT: <النتيجة الكاملة والمفصلة>"""
-        else:
-            act_prompt = "استمر في التنفيذ أو أعطِ النتيجة النهائية باستخدام RESULT:"
+        # خطوة اختيارية: تحسين الإجابة إذا كانت قصيرة جداً
+        if len(final_result.split()) < 10 and category not in ("simple", "translation"):
+            improve_resp, imp_src = await smart_chat(model, [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": task},
+                {"role": "assistant", "content": final_result},
+                {"role": "user", "content": "وسّع الإجابة أكثر وأضف تفاصيل مفيدة."},
+            ], max_tokens=500, temperature=0.3, step_name="EXPAND")
+            if len(improve_resp) > len(final_result):
+                src_tag = " [🤖DS]" if imp_src == "deepseek" else ""
+                steps.append(f"[EXPAND]{src_tag} {improve_resp}")
+                final_result = improve_resp
 
-        messages.append({"role": "user", "content": act_prompt})
-        response, act_src = await smart_chat(model, messages, max_tokens=800, temperature=0.2, step_name="ACT")
-        if act_src == "deepseek":
-            steps.append(f"[ACT:DS] استُعين بـ DeepSeek لهذه الخطوة")
-        messages.append({"role": "assistant", "content": response})
+    # ══ المسار المعقد: للمهام التي تحتاج أدوات وتخطيط ══
+    else:
+        messages = [{"role": "system", "content": MASTER_SYSTEM_PROMPT}]
 
-        # تحقق من استخدام أداة
-        tool_name, tool_result = await parse_and_execute_tool(response)
-        if tool_name and tool_result:
-            steps.append(f"[TOOL:{tool_name}] {tool_result}")
-            messages.append({
-                "role": "user",
-                "content": f"نتيجة الأداة '{tool_name}':\n{tool_result}\n\nواصل التنفيذ أو أعطِ النتيجة النهائية."
-            })
-            continue
+        # Observe
+        observe_prompt = f"المهمة: {task}\n\nحلّل ما المطلوب وهل تحتاج أداة من: {', '.join(TOOLS.keys())}"
+        messages.append({"role": "user", "content": observe_prompt})
+        observation, obs_src = await smart_chat(model, messages, max_tokens=300, step_name="OBSERVE")
+        messages.append({"role": "assistant", "content": observation})
+        src_tag = " [🤖DS]" if obs_src == "deepseek" else ""
+        steps.append(f"[OBSERVE]{src_tag} {observation}")
 
-        # تحقق من النتيجة النهائية
-        result_match = re.search(r'RESULT:\s*(.+)', response, re.DOTALL)
-        if result_match:
-            final_result = result_match.group(1).strip()
+        # Act loop
+        for i in range(max_iterations):
+            iterations = i + 1
+            if i == 0:
+                act_prompt = (
+                    f"نفّذ المهمة الآن: {task}\n"
+                    "إذا احتجت أداة:\nTOOL: <اسم>\nPARAMS: {\"مفتاح\": \"قيمة\"}\n"
+                    "وإلا اكتب مباشرة:\nRESULT: <الإجابة الكاملة>"
+                )
+            else:
+                act_prompt = "أكمل التنفيذ أو أعطِ:\nRESULT: <الإجابة الكاملة>"
+
+            messages.append({"role": "user", "content": act_prompt})
+            response, act_src = await smart_chat(
+                model, messages, max_tokens=800, temperature=0.2, step_name=f"ACT-{i+1}"
+            )
+            if act_src == "deepseek":
+                steps.append(f"[ACT:DS] استُعين بـ DeepSeek")
+            messages.append({"role": "assistant", "content": response})
+
+            # أداة؟
+            tool_name, tool_result = await parse_and_execute_tool(response)
+            if tool_name and tool_result:
+                steps.append(f"[TOOL:{tool_name}] {tool_result}")
+                messages.append({
+                    "role": "user",
+                    "content": f"نتيجة الأداة:\n{tool_result}\n\nواصل أو أعطِ RESULT:"
+                })
+                continue
+
+            # RESULT صريح؟
+            result_match = re.search(r'RESULT:\s*(.+)', response, re.DOTALL)
+            if result_match:
+                final_result = result_match.group(1).strip()
+                steps.append(f"[ACT-{i+1}] {response}")
+                break
+
             steps.append(f"[ACT-{i+1}] {response}")
-            break
 
-        steps.append(f"[ACT-{i+1}] {response}")
-        
-        # إذا لم يستخدم صيغة محددة، نعتبر الرد هو النتيجة
-        if i >= 2 and not tool_name:
-            final_result = response
-            break
+            # بعد التكرار الأول: إذا لم يستخدم أداة، الرد هو النتيجة
+            if i >= 1 and not tool_name:
+                final_result = response
+                break
+
+        if not final_result:
+            final_result = steps[-1] if steps else "اكتمل التنفيذ"
 
     # ── مرحلة التحقق (Verify) ────────────────────────────────────────────
     if not final_result:
-        final_result = steps[-1].replace("[ACT-" + str(iterations) + "] ", "") if steps else "اكتمل التنفيذ"
+        final_result = "اكتمل التنفيذ"
 
     verify_msgs = [
-        {"role": "system", "content": "أنت مراجع جودة. قيّم النتيجة باختصار."},
-        {"role": "user", "content": f"المهمة: {task}\nالنتيجة: {final_result[:500]}\nهل اكتملت المهمة؟ قيّم وحسّن إن لزم."}
+        {"role": "system", "content": "أنت مراجع جودة. إذا كانت النتيجة جيدة قل 'مكتمل'. إذا كانت ناقصة حسّنها."},
+        {"role": "user", "content": f"المهمة: {task}\nالنتيجة: {final_result[:600]}"}
     ]
-    verification = await sc(model, verify_msgs, max_tokens=300, step_name="VERIFY")
+    verification = await sc(model, verify_msgs, max_tokens=200, step_name="VERIFY")
+    # إذا كانت مراجعة الجودة أطول وأفضل، استخدمها كنتيجة نهائية
+    if len(verification) > len(final_result) and "مكتمل" not in verification[:20]:
+        final_result = verification
     steps.append(f"[VERIFY] {verification}")
 
     duration = time.time() - start_time

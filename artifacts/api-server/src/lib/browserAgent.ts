@@ -64,11 +64,57 @@ class BrowserAgent extends EventEmitter {
     if (!url.startsWith("http")) url = "https://" + url;
     this.currentUrl = url;
     await this.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await this.page.waitForTimeout(1000);
   }
 
   async click(x: number, y: number): Promise<void> {
     if (!this.page) return;
     await this.page.mouse.click(x, y);
+  }
+
+  async clickByText(text: string): Promise<boolean> {
+    if (!this.page) return false;
+    try {
+      const el = this.page.getByText(text, { exact: false }).first();
+      await el.click({ timeout: 5000 });
+      await this.page.waitForTimeout(1000);
+      return true;
+    } catch {
+      try {
+        await this.page.click(`text="${text}"`, { timeout: 5000 });
+        await this.page.waitForTimeout(1000);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+
+  async clickBySelector(selector: string): Promise<boolean> {
+    if (!this.page) return false;
+    try {
+      await this.page.click(selector, { timeout: 5000 });
+      await this.page.waitForTimeout(1000);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async fillField(selector: string, value: string): Promise<boolean> {
+    if (!this.page) return false;
+    try {
+      await this.page.fill(selector, value, { timeout: 5000 });
+      return true;
+    } catch {
+      try {
+        await this.page.focus(selector);
+        await this.page.keyboard.type(value, { delay: 50 });
+        return true;
+      } catch {
+        return false;
+      }
+    }
   }
 
   async type(text: string): Promise<void> {
@@ -105,6 +151,55 @@ class BrowserAgent extends EventEmitter {
     if (!this.page) return "";
     try {
       return await this.page.evaluate("document.body?.innerText?.slice(0, 3000) || ''") as string;
+    } catch { return ""; }
+  }
+
+  async getPageStructure(): Promise<string> {
+    if (!this.page) return "";
+    try {
+      const data = await this.page.evaluate(() => {
+        const inputs = Array.from(document.querySelectorAll("input, textarea, select")).slice(0, 20).map((el: any) => ({
+          tag: el.tagName.toLowerCase(),
+          type: el.type || "",
+          name: el.name || "",
+          id: el.id || "",
+          placeholder: el.placeholder || "",
+          label: el.labels?.[0]?.textContent?.trim() || "",
+        }));
+
+        const buttons = Array.from(document.querySelectorAll("button, [role='button'], input[type='submit'], input[type='button'], a.btn, a[href]")).slice(0, 30).map((el: any) => ({
+          tag: el.tagName.toLowerCase(),
+          text: el.textContent?.trim().slice(0, 60) || "",
+          href: el.href || "",
+          type: el.type || "",
+        }));
+
+        const title = document.title || "";
+        const url = window.location.href;
+
+        return { inputs, buttons, title, url };
+      });
+
+      const lines: string[] = [];
+      lines.push(`الصفحة: ${data.title}`);
+      lines.push(`URL: ${data.url}`);
+
+      if (data.inputs.length > 0) {
+        lines.push("\nحقول الإدخال:");
+        data.inputs.forEach((inp: any) => {
+          const label = inp.label || inp.placeholder || inp.name || inp.id || inp.type;
+          lines.push(`  - [${inp.tag}] النوع: ${inp.type}, التعريف: id="${inp.id}" name="${inp.name}", النص: "${label}"`);
+        });
+      }
+
+      if (data.buttons.length > 0) {
+        lines.push("\nالأزرار والروابط:");
+        data.buttons.forEach((btn: any) => {
+          if (btn.text) lines.push(`  - [${btn.tag}] "${btn.text}" ${btn.href ? `-> ${btn.href}` : ""}`);
+        });
+      }
+
+      return lines.join("\n");
     } catch { return ""; }
   }
 

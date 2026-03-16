@@ -226,7 +226,7 @@ const InputRequestBanner = memo(({ req, onAnswer }: { req: InputRequest; onAnswe
 });
 
 // ─── TechPanel ────────────────────────────────────────────────────────────────
-const TechPanel = memo(({ apiBase }: { apiBase: string }) => {
+const TechPanel = memo(({ apiBase, isCloud = false }: { apiBase: string; isCloud?: boolean }) => {
   const [knowledge, setKnowledge]       = useState<TechKnowledge | null>(null);
   const [improvements, setImprovements] = useState<CodeImprovement[]>([]);
   const [perf, setPerf]                 = useState<PerfData | null>(null);
@@ -1373,7 +1373,7 @@ const App: React.FC = () => {
           <div className="hidden lg:flex flex-1 min-h-0">
             {/* Chat column — always visible, width adapts */}
             <div className={`border-r border-slate-800/50 flex flex-col min-h-0 transition-all duration-300 ${
-              browserMode === 'expanded' ? 'w-0 overflow-hidden border-0' : (showPlan ? 'w-[36%]' : 'w-[50%]')
+              browserMode === 'expanded' ? 'w-0 overflow-hidden border-0' : (showPlan ? (showTech ? 'w-[30%]' : 'w-[36%]') : (showTech ? 'w-[42%]' : 'w-[50%]'))
             }`}>
               <ChatPanel
                 messages={messages} tasks={tasks} isConnected={isConnected}
@@ -1413,7 +1413,7 @@ const App: React.FC = () => {
             {/* Tech Intelligence column — toggled by showTech */}
             {showTech && (
               <div className="w-[280px] border-l border-slate-800/50 flex flex-col min-h-0 overflow-hidden transition-all duration-300 flex-shrink-0">
-                <TechPanel apiBase={(import.meta.env.VITE_API_URL as string) || ''}/>
+                <TechPanel apiBase={(import.meta.env.VITE_API_URL as string) || ''} isCloud={isCloud}/>
               </div>
             )}
           </div>
@@ -1434,7 +1434,7 @@ const App: React.FC = () => {
                     <PlanPanel plan={currentPlan} agentActivity={agentActivity} isAgentBusy={isAgentBusy}/>
                   </div>
                 : activeTab === 'tech'
-                ? <TechPanel apiBase={(import.meta.env.VITE_API_URL as string) || ''}/>
+                ? <TechPanel apiBase={(import.meta.env.VITE_API_URL as string) || ''} isCloud={isCloud}/>
                 : <BrowserPanel
                     frameSrc={browserFrameSrc} browserHasFrame={browserHasFrame}
                     isAgentBusy={isAgentBusy} onEmit={emitBrowser}

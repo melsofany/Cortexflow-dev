@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Cpu, Settings, Activity } from 'lucide-react';
+import { Cpu, Settings } from 'lucide-react';
 import { useHealthCheck } from '@workspace/api-client-react';
 import { useAgentState } from '@/hooks/use-agent-state';
 import { cn } from '@/lib/utils';
@@ -8,12 +8,14 @@ import { ChatInterface } from '@/components/chat-interface';
 import { BrowserView } from '@/components/browser-view';
 import { ThinkingSteps } from '@/components/thinking-steps';
 import { TerminalLogs } from '@/components/terminal-logs';
+import { SettingsModal } from '@/components/settings-modal';
 
 export default function Dashboard() {
   const { data: health } = useHealthCheck();
   const { connected, realtimeLogs, thinkingStream, activeStep } = useAgentState();
   
   const [activeTab, setActiveTab] = useState<'chat' | 'browser'>('chat');
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-background">
@@ -48,7 +50,10 @@ export default function Dashboard() {
             </div>
           </div>
           
-          <button className="text-muted-foreground hover:text-primary transition-colors p-2 hover:bg-white/5 rounded-full">
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="text-muted-foreground hover:text-primary transition-colors p-2 hover:bg-white/5 rounded-full"
+          >
             <Settings size={18} />
           </button>
         </div>
@@ -106,6 +111,8 @@ export default function Dashboard() {
         </div>
         
       </main>
+
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }

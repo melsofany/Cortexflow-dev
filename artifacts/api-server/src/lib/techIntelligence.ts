@@ -505,7 +505,8 @@ class PerformanceMonitor {
       this.addAlert("warn", "DeepSeek API غير متاح");
     }
 
-    // فحص Ollama
+    // فحص Ollama — في بيئة cloud لا يُعدّ غيابه خطأً
+    const isCloud = process.env.NODE_ENV === "production" || !!process.env.RENDER;
     try {
       const OLLAMA = process.env.OLLAMA_URL || "http://localhost:11434";
       await axios.get(`${OLLAMA}/api/tags`, { timeout: 3000 });
@@ -513,18 +514,23 @@ class PerformanceMonitor {
       metrics.push({ name: "ollama_status", value: 1, unit: "bool", timestamp: new Date().toISOString(), status: "healthy" });
     } catch {
       this.data.apiHealth.ollama = false;
-      metrics.push({ name: "ollama_status", value: 0, unit: "bool", timestamp: new Date().toISOString(), status: "warning" });
+      if (!isCloud) {
+        metrics.push({ name: "ollama_status", value: 0, unit: "bool", timestamp: new Date().toISOString(), status: "warning" });
+      }
     }
 
-    // فحص Agent Service
+    // فحص Agent Service — في cloud قد يكون نائماً (Render starter spin-down)
     try {
-      await axios.get(`${AGENT_SERVICE}/health`, { timeout: 3000 });
+      const agentTimeout = isCloud ? 8000 : 3000;
+      await axios.get(`${AGENT_SERVICE}/health`, { timeout: agentTimeout });
       this.data.apiHealth.agentService = true;
       metrics.push({ name: "agent_service_status", value: 1, unit: "bool", timestamp: new Date().toISOString(), status: "healthy" });
     } catch {
       this.data.apiHealth.agentService = false;
-      metrics.push({ name: "agent_service_status", value: 0, unit: "bool", timestamp: new Date().toISOString(), status: "warning" });
-      issues.push("خدمة الوكيل Python غير متاحة");
+      if (!isCloud) {
+        metrics.push({ name: "agent_service_status", value: 0, unit: "bool", timestamp: new Date().toISOString(), status: "warning" });
+        issues.push("خدمة الوكيل Python غير متاحة");
+      }
     }
 
     // معدل النجاح
@@ -563,8 +569,14 @@ class PerformanceMonitor {
     if (this.data.snapshots.length > 100) this.data.snapshots = this.data.snapshots.slice(0, 100);
     this.data.lastCheck = new Date().toISOString();
 
-    if (score < 50) this.addAlert("critical", `نقاط الأداء منخفضة جداً: ${score}/100`);
-    else if (score < 75) this.addAlert("warn", `أداء النظام يحتاج متابعة: ${score}/100`);
+    if (!isCloud) {
+      if (score < 50) this.addAlert("critical", `نقاط الأداء منخفضة جداً: ${score}/100`);
+      else if (score < 75) this.addAlert("warn", `أداء النظام يحتاج متابعة: ${score}/100`);
+    } else if (score < 30) {
+      const recentAlerts = this.data.alerts.slice(0, 3);
+      const alreadyAlerted = recentAlerts.some(a => a.message.includes("نقاط الأداء"));
+      if (!alreadyAlerted) this.addAlert("warn", `بعض الخدمات غير متاحة في بيئة Cloud: ${score}/100`);
+    }
 
     this.save();
     console.log(`[Monitor] 📊 فحص الصحة: ${score}/100 | مشاكل: ${issues.length}`);

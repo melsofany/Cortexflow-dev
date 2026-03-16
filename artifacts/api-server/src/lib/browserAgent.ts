@@ -4,7 +4,15 @@ import { EventEmitter } from "events";
 import { existsSync } from "fs";
 
 const REPLIT_CHROMIUM_PATH = "/nix/store/0n9rl5l9syy808xi9bk4f6dhnfrvhkww-playwright-browsers-chromium/chromium-1080/chrome-linux/chrome";
-const CHROMIUM_PATH = existsSync(REPLIT_CHROMIUM_PATH) ? REPLIT_CHROMIUM_PATH : undefined;
+const SYSTEM_CHROMIUM_PATHS = [
+  process.env.CHROMIUM_PATH,
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+  "/usr/bin/google-chrome",
+  "/usr/bin/google-chrome-stable",
+  REPLIT_CHROMIUM_PATH,
+];
+const CHROMIUM_PATH = SYSTEM_CHROMIUM_PATHS.find(p => p && existsSync(p)) || undefined;
 
 class BrowserAgent extends EventEmitter {
   private browser: Browser | null = null;

@@ -964,12 +964,28 @@ class BrowserAgent extends EventEmitter {
           }
         }
 
-        const buttons = Array.from(document.querySelectorAll("button, [role='button'], input[type='submit'], input[type='button'], a.btn, a[href]")).slice(0, 30).map((el: any) => ({
-          tag: el.tagName.toLowerCase(),
-          text: el.textContent?.trim().slice(0, 60) || "",
-          href: el.href || "",
-          type: el.type || "",
-        }));
+        const buttons = Array.from(document.querySelectorAll("button, [role='button'], input[type='submit'], input[type='button'], a[href]")).slice(0, 30).map((el: any) => {
+          const id = el.id || "";
+          const name = el.name || "";
+          const type = el.type || "";
+          const tag = el.tagName.toLowerCase();
+          // selector فريد لكل زر
+          let selector = tag;
+          if (id) selector = `#${id}`;
+          else if (name) selector = `${tag}[name="${name}"]`;
+          else if (type === "submit") selector = `${tag}[type="submit"]`;
+          return {
+            tag,
+            text: el.textContent?.trim().slice(0, 60) || (el as HTMLInputElement).value || "",
+            href: el.href || "",
+            type,
+            id,
+            name,
+            selector,
+            ariaLabel: el.getAttribute("aria-label") || "",
+            inForm: !!el.closest("form"),
+          };
+        });
 
         const title = document.title || "";
         const url = window.location.href;
@@ -1057,6 +1073,76 @@ class BrowserAgent extends EventEmitter {
         return results.slice(0, 4);
       });
     } catch { return []; }
+  }
+
+  // ── قائمة شاملة بكل العناصر التفاعلية مع selectors فريدة ─────────────
+  async getInteractiveElements(): Promise<Array<{
+    idx: number;
+    tag: string;
+    text: string;
+    id: string;
+    name: string;
+    type: string;
+    ariaLabel: string;
+    href: string;
+    selector: string;
+    inForm: boolean;
+    isSubmit: boolean;
+  }>> {
+    if (!this.page) return [];
+    try {
+      return await this.page.evaluate(() => {
+        const elems: NodeListOf<Element> = document.querySelectorAll(
+          'button, [role="button"], input[type="submit"], input[type="button"], a[href], [onclick], [tabindex]:not([tabindex="-1"])'
+        );
+        const result: any[] = [];
+        let idx = 0;
+        for (const el of Array.from(elems).slice(0, 60)) {
+          const e = el as HTMLElement;
+          const rect = e.getBoundingClientRect();
+          if (rect.width === 0 && rect.height === 0) continue;
+          const tag = e.tagName.toLowerCase();
+          const text = (e.textContent || "").trim().slice(0, 80).replace(/\s+/g, " ");
+          const id = e.id || "";
+          const name = (e as any).name || "";
+          const type = (e as any).type || "";
+          const ariaLabel = e.getAttribute("aria-label") || e.getAttribute("aria-labelledby") || "";
+          const href = (e as any).href || "";
+          const inForm = !!e.closest("form");
+          const isSubmit = type === "submit" || e.getAttribute("data-testid")?.includes("submit") || false;
+
+          // بناء selector فريد
+          let selector = tag;
+          if (id) {
+            selector = `#${CSS.escape(id)}`;
+          } else if (name) {
+            selector = `${tag}[name="${name}"]`;
+          } else {
+            // استخدم nth-of-type
+            selector = `${tag}:nth-of-type(${idx + 1})`;
+          }
+
+          result.push({ idx, tag, text, id, name, type, ariaLabel, href, selector, inForm, isSubmit });
+          idx++;
+        }
+        return result;
+      });
+    } catch { return []; }
+  }
+
+  // ── نقر بـ selector مخصص مع احتياطيات ─────────────────────────────────
+  async clickByAnySelector(selectors: string[]): Promise<boolean> {
+    if (!this.page) return false;
+    for (const sel of selectors) {
+      try {
+        const loc = this.page.locator(sel).first();
+        await loc.waitFor({ state: "visible", timeout: 2000 });
+        await loc.click({ timeout: 3000 });
+        await this.page.waitForTimeout(1200);
+        return true;
+      } catch { }
+    }
+    return false;
   }
 
   async getCurrentUrl(): Promise<string> {

@@ -32,6 +32,9 @@ const STEP_META: Record<string, { icon: any; color: string; label: string }> = {
   VERIFY:   { icon: CheckCircle2, color: 'text-emerald-400', label: 'تحقق'    },
   MEMORY:   { icon: Clock,        color: 'text-pink-400',    label: 'ذاكرة'   },
   PLANNING: { icon: Activity,     color: 'text-cyan-400',    label: 'وضع خطة' },
+  ASK:      { icon: User,         color: 'text-yellow-400',  label: 'طلب بيانات' },
+  ERR:      { icon: AlertTriangle,color: 'text-red-400',     label: 'خطأ'     },
+  MODEL:    { icon: Brain,        color: 'text-slate-400',   label: 'نموذج'   },
 };
 const STEP_ORDER = ['OBSERVE','THINK','PLAN','ACT','VERIFY'];
 const uid = () => Math.random().toString(36).slice(2, 11);
@@ -127,6 +130,43 @@ const MessageItem = memo(({ msg, tasks, onResume }: {
   );
 });
 
+// ─── InputRequestBanner ───────────────────────────────────────────────────────
+interface InputRequest { taskId: string; question: string; }
+const InputRequestBanner = memo(({ req, onAnswer }: { req: InputRequest; onAnswer: (ans: string) => void }) => {
+  const [val, setVal] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { inputRef.current?.focus(); }, []);
+  const submit = () => { if (val.trim()) { onAnswer(val.trim()); setVal(''); } };
+  return (
+    <div className="mb-3 p-3 bg-yellow-900/20 border border-yellow-500/40 rounded-xl">
+      <div className="flex items-center gap-2 mb-2">
+        <User size={14} className="text-yellow-400 flex-shrink-0"/>
+        <span className="text-yellow-300 text-xs font-semibold">الوكيل يطلب بيانات</span>
+      </div>
+      <p className="text-yellow-100 text-sm mb-2 leading-relaxed">{req.question}</p>
+      <div className="flex gap-2">
+        <input
+          ref={inputRef}
+          type="text"
+          value={val}
+          onChange={e => setVal(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') submit(); }}
+          placeholder="اكتب الإجابة هنا..."
+          className="flex-1 bg-slate-800/70 border border-slate-600/50 rounded-lg px-3 py-1.5 text-sm text-white placeholder-slate-500 outline-none focus:border-yellow-500/60"
+          dir="auto"
+        />
+        <button
+          onClick={submit}
+          disabled={!val.trim()}
+          className="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-white text-xs font-bold transition-colors"
+        >
+          إرسال
+        </button>
+      </div>
+    </div>
+  );
+});
+
 // ─── ChatPanel (stable component outside App) ─────────────────────────────────
 interface ChatPanelProps {
   messages: Message[];
@@ -139,10 +179,13 @@ interface ChatPanelProps {
   onSubmit: () => void;
   onStop: () => void;
   onResume: (id: string) => void;
+  pendingInputRequest: InputRequest | null;
+  onUserAnswer: (ans: string) => void;
 }
 const ChatPanel = memo(({
   messages, tasks, isConnected, isAgentBusy, currentStep,
-  inputValue, setInputValue, onSubmit, onStop, onResume
+  inputValue, setInputValue, onSubmit, onStop, onResume,
+  pendingInputRequest, onUserAnswer,
 }: ChatPanelProps) => {
   const endRef  = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
@@ -200,6 +243,10 @@ const ChatPanel = memo(({
 
       {/* Input area */}
       <div className="p-4 border-t border-slate-800/50 bg-[#0d0d15] flex-shrink-0">
+        {/* Agent asks for user input */}
+        {pendingInputRequest && (
+          <InputRequestBanner req={pendingInputRequest} onAnswer={onUserAnswer}/>
+        )}
         {/* Step progress bar */}
         {isAgentBusy && currentStep && STEP_META[currentStep] && (
           <div className="mb-3 flex items-center gap-2 px-3 py-2 bg-slate-800/50 rounded-xl border border-slate-700/30">
@@ -503,6 +550,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab]         = useState<ActiveTab>('chat');
   const [sidebarOpen, setSidebarOpen]     = useState(false);
   const [isAgentBusy, setIsAgentBusy]     = useState(false);
+  const [pendingInputRequest, setPendingInputRequest] = useState<InputRequest | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
 
@@ -607,8 +655,22 @@ const App: React.FC = () => {
       if (log.level === 'error') addSystem(log.message, 'error');
     });
 
+    // ── الوكيل يطلب بيانات من المستخدم ──────────────────────────────────────
+    socket.on('agentNeedsInput', (d: InputRequest) => {
+      setPendingInputRequest(d);
+      setActiveTab('chat');
+    });
+
     return () => { socket.disconnect(); };
   }, [addSystem, addAgent, addThinking]);
+
+  // ── User answers agent's request for input ──────────────────────────────
+  const handleUserAnswer = useCallback((answer: string) => {
+    if (!pendingInputRequest || !socketRef.current) return;
+    socketRef.current.emit('userInput', { taskId: pendingInputRequest.taskId, answer });
+    addThinking(`[ACT] إجابة المستخدم: ${answer}`, 'ACT');
+    setPendingInputRequest(null);
+  }, [pendingInputRequest, addThinking]);
 
   // ── Sidebar ─────────────────────────────────────────────────────────────
   const Sidebar = (
@@ -704,6 +766,7 @@ const App: React.FC = () => {
                 isAgentBusy={isAgentBusy} currentStep={currentStep}
                 inputValue={inputValue} setInputValue={setInputValue}
                 onSubmit={handleSubmit} onStop={handleStop} onResume={handleResume}
+                pendingInputRequest={pendingInputRequest} onUserAnswer={handleUserAnswer}
               />
             </div>
             <div className="flex-1 flex flex-col min-h-0">
@@ -723,6 +786,7 @@ const App: React.FC = () => {
                     isAgentBusy={isAgentBusy} currentStep={currentStep}
                     inputValue={inputValue} setInputValue={setInputValue}
                     onSubmit={handleSubmit} onStop={handleStop} onResume={handleResume}
+                    pendingInputRequest={pendingInputRequest} onUserAnswer={handleUserAnswer}
                   />
                 : <BrowserPanel
                     frameSrc={browserFrameSrc} browserHasFrame={browserHasFrame}

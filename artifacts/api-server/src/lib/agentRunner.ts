@@ -85,11 +85,26 @@ ACTION: <الإجراء> | PARAM: <القيمة>
   click     - النقر على عنصر بالنص المرئي: PARAM: نص_الزر
   fill      - ملء حقل نصي: PARAM: اسم_الحقل=القيمة
   select    - اختيار من قائمة منسدلة <select>: PARAM: اسم_القائمة=الخيار
+  ask       - اطلب من المستخدم إدخال بيانات حساسة: PARAM: وصف ما تحتاجه
   type      - كتابة نص في العنصر المحدد: PARAM: النص
   key       - ضغط مفتاح: PARAM: Enter أو Tab أو Escape
   scroll    - التمرير: PARAM: up أو down
   wait      - انتظار: PARAM: waiting
   done      - المهمة مكتملة: PARAM: وصف الإنجاز
+
+قاعدة ask (مهمة جداً):
+- استخدم ask دائماً للبيانات الحساسة قبل استخدام fill:
+  * البريد الإلكتروني الحقيقي
+  * كلمة المرور
+  * رقم الهاتف
+  * الاسم الحقيقي (إذا لم يُذكر في المهمة)
+- مثال: ACTION: ask | PARAM: أدخل بريدك الإلكتروني لإنشاء الحساب
+- بعد استلام الرد، استخدم البيانات في fill أو select
+
+قاعدة كشف الأخطاء:
+- إذا وردت "أخطاء ظاهرة في الصفحة" — حلّل الخطأ أولاً
+- إذا كان الخطأ بسبب بيانات خاطئة → اطلب التصحيح من المستخدم بـ ask
+- إذا كان الخطأ تقنياً → جرّب إجراءً مختلفاً
 
 قاعدة fill:
 - استخدم اسم الحقل من name= أو id= الظاهر في هيكل الصفحة
@@ -187,6 +202,18 @@ class AgentRunner extends EventEmitter {
       agentType: "AgentRunner",
       action: `step_${step.toLowerCase()}`,
       output: content.substring(0, 300),
+    });
+  }
+
+  // توقف مؤقت وانتظار إدخال المستخدم (حتى دقيقتين)
+  waitForUserInput(taskId: string, question: string): Promise<string> {
+    this.emit("needInput", { taskId, question });
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(""), 120000);
+      this.once(`userInput:${taskId}`, (answer: string) => {
+        clearTimeout(timer);
+        resolve(answer);
+      });
     });
   }
 
@@ -362,6 +389,20 @@ class AgentRunner extends EventEmitter {
           break;
         }
 
+        // ── إجراء ask: توقف وانتظار إدخال المستخدم ───────────────────────────
+        if (action === "ask") {
+          this.emitStep(taskId, "ASK", param);
+          const userAnswer = await this.waitForUserInput(taskId, param);
+          if (userAnswer.trim()) {
+            history.push({ role: "user", content: `المستخدم أدخل: ${userAnswer}` });
+            this.emitStep(taskId, "ACT", `✓ استُلمت البيانات من المستخدم`);
+          } else {
+            this.emitStep(taskId, "ACT", `⏱ انتهت مهلة الانتظار — تابع بدون بيانات`);
+          }
+          await sleep(300);
+          continue;
+        }
+
         try {
           await executeAction(action, param);
           // لقطة فورية بعد كل إجراء للمزامنة مع التفكير
@@ -370,7 +411,16 @@ class AgentRunner extends EventEmitter {
           this.emitStep(taskId, "ACT", `تحذير: ${err.message}`);
         }
 
-        await sleep(500);
+        // ── كشف الأخطاء التلقائي بعد كل إجراء ─────────────────────────────
+        await sleep(300);
+        const pageErrors = await browserAgent.detectErrors();
+        if (pageErrors.length > 0) {
+          const errText = pageErrors.join(" | ");
+          this.emitStep(taskId, "ERR", `⚠️ ${errText}`);
+          history.push({ role: "user", content: `أخطاء ظاهرة في الصفحة: ${errText}\nحلّل هذا الخطأ وصحّحه أو اطلب من المستخدم بيانات صحيحة باستخدام ask.` });
+        }
+
+        await sleep(200);
 
         if (i === MAX_ITERATIONS) {
           finalResult = `اكتمل التنفيذ. الموقع الأخير: ${await browserAgent.getCurrentUrl()}`;

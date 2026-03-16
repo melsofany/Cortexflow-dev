@@ -49,40 +49,51 @@ io.on("connection", (socket) => {
       socket.emit("taskCreated", task);
       io.emit("taskUpdate", task);
 
-      const onThinking = (d: any) => {
-        if (d.taskId === task.taskId) socket.emit("thinking", d);
-      };
-      const onStart = (d: any) => {
+      const onThinking  = (d: any) => { if (d.taskId === task.taskId) socket.emit("thinking", d); };
+      const onStart     = (d: any) => {
         if (d.taskId === task.taskId) {
           socket.emit("taskStart", d);
           io.emit("taskUpdate", taskStore.getTask(task.taskId));
         }
       };
-      const onSuccess = (d: any) => {
+      const onSuccess   = (d: any) => {
         if (d.taskId === task.taskId) {
           socket.emit("taskSuccess", d);
           io.emit("taskUpdate", taskStore.getTask(task.taskId));
           cleanup();
         }
       };
-      const onFail = (d: any) => {
+      const onFail      = (d: any) => {
         if (d.taskId === task.taskId) {
           socket.emit("taskFail", d);
           io.emit("taskUpdate", taskStore.getTask(task.taskId));
           cleanup();
         }
       };
+      // ── أحداث ask/needInput ─────────────────────────────────────────────
+      const onNeedInput = (d: any) => {
+        if (d.taskId === task.taskId) socket.emit("agentNeedsInput", d);
+      };
+      const onUserInput = (data: any) => {
+        if (data.taskId === task.taskId) {
+          agentRunner.emit(`userInput:${task.taskId}`, data.answer);
+        }
+      };
       const cleanup = () => {
-        agentRunner.off("thinking", onThinking);
+        agentRunner.off("thinking",  onThinking);
         agentRunner.off("taskStart", onStart);
         agentRunner.off("taskSuccess", onSuccess);
-        agentRunner.off("taskFail", onFail);
+        agentRunner.off("taskFail",  onFail);
+        agentRunner.off("needInput", onNeedInput);
+        socket.off("userInput", onUserInput);
       };
 
-      agentRunner.on("thinking", onThinking);
+      agentRunner.on("thinking",  onThinking);
       agentRunner.on("taskStart", onStart);
       agentRunner.on("taskSuccess", onSuccess);
-      agentRunner.on("taskFail", onFail);
+      agentRunner.on("taskFail",  onFail);
+      agentRunner.on("needInput", onNeedInput);
+      socket.on("userInput", onUserInput);
 
       agentRunner.executeTask(task).catch((err: any) => {
         socket.emit("error", { message: err.message });

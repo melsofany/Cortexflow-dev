@@ -328,6 +328,32 @@ class BrowserAgent extends EventEmitter {
     } catch { return ""; }
   }
 
+  // كشف رسائل الخطأ الظاهرة في الصفحة
+  async detectErrors(): Promise<string[]> {
+    if (!this.page) return [];
+    try {
+      return await this.page.evaluate(() => {
+        const selectors = [
+          '[role="alert"]', '[aria-live="assertive"]', '[aria-live="polite"]',
+          '[class*="error" i]', '[class*="invalid" i]', '[class*="warning" i]',
+          '[class*="alert" i]', '[data-testid*="error" i]', 'span._6qs9',
+        ];
+        const seen = new Set<string>();
+        const results: string[] = [];
+        for (const sel of selectors) {
+          for (const el of Array.from(document.querySelectorAll(sel))) {
+            const t = (el as HTMLElement).innerText?.trim();
+            if (t && t.length > 4 && t.length < 250 && !seen.has(t)) {
+              seen.add(t);
+              results.push(t);
+            }
+          }
+        }
+        return results.slice(0, 4);
+      });
+    } catch { return []; }
+  }
+
   async getCurrentUrl(): Promise<string> {
     if (!this.page) return "";
     try { return this.page.url(); } catch { return ""; }

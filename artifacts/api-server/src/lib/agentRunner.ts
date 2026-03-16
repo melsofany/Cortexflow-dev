@@ -493,21 +493,29 @@ class AgentRunner extends EventEmitter {
       const jsonMatch = resp.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
+        // نظّف الرابط الذي حدده DeepSeek
+        let dsUrl: string | null = null;
+        if (parsed.targetUrl && typeof parsed.targetUrl === "string") {
+          const rawUrl = parsed.targetUrl.trim();
+          if (rawUrl.startsWith("http")) dsUrl = rawUrl;
+          else if (rawUrl.length > 3) dsUrl = "https://" + rawUrl;
+        }
         return {
           analysis: [
             `## 🧠 فهم المهمة\n${parsed.understanding || ""}`,
-            parsed.targetUrl ? `\n## 🌐 الرابط الهدف\n${parsed.targetUrl}` : "",
+            dsUrl ? `\n## 🌐 الرابط الهدف\n${dsUrl}` : "",
             `\n## 📋 خطوات التنفيذ\n${(parsed.steps || []).map((s: string, i: number) => `${i+1}. ${s}`).join("\n")}`,
             parsed.needsFromUser?.length ? `\n## ❓ مطلوب من المستخدم\n${(parsed.needsFromUser as string[]).map((s: string) => `- ${s}`).join("\n")}` : "",
             parsed.warnings?.length ? `\n## ⚠️ تحذيرات\n${(parsed.warnings as string[]).map((s: string) => `- ${s}`).join("\n")}` : "",
           ].filter(Boolean).join(""),
           steps: parsed.steps || [],
           needsFromUser: parsed.needsFromUser || [],
+          targetUrl: dsUrl,  // الرابط الذي حدده DeepSeek ← أولوية قصوى
         };
       }
     } catch {}
 
-    return { analysis: `تحليل المهمة: "${taskDescription}"`, steps: [], needsFromUser: [] };
+    return { analysis: `تحليل المهمة: "${taskDescription}"`, steps: [], needsFromUser: [], targetUrl: null };
   }
 
   // ── تنفيذ مهام المتصفح ─────────────────────────────────────────────────
@@ -543,18 +551,22 @@ class AgentRunner extends EventEmitter {
     const useOllama = ollamaClient.isAvailable() || !!getDeepSeekKey();
 
     // ── التحليل العميق بـ DeepSeek (مثل تحليل الشات) ──────────────────
-    const targetUrlEarly = extractUrl(task.description) || learningEngine.getLearnedUrl(task.description) || task.url;
+    const extractedUrl = extractUrl(task.description) || learningEngine.getLearnedUrl(task.description) || task.url;
     this.emitStep(taskId, "THINK", `🔍 DeepSeek يحلل المهمة بعمق...`);
-    const { analysis: deepAnalysis, steps: plannedSteps, needsFromUser } = await this.deepAnalyzeTask(task.description, targetUrlEarly);
+    const { analysis: deepAnalysis, steps: plannedSteps, needsFromUser, targetUrl: deepSeekUrl } = await this.deepAnalyzeTask(task.description, extractedUrl);
     this.emitStep(taskId, "THINK", deepAnalysis);
+
+    // ▶ رابط DeepSeek يحظى بأولوية قصوى — فهو يفهم السياق أفضل من المطابقة النصية
+    const targetUrl = deepSeekUrl || extractedUrl;
+    if (deepSeekUrl && deepSeekUrl !== extractedUrl) {
+      this.emitStep(taskId, "THINK", `🎯 DeepSeek حدد الرابط الصحيح: ${deepSeekUrl} (تم تجاوز: ${extractedUrl || "لا يوجد"})`);
+    }
 
     // إذا كانت المهمة تحتاج بيانات من المستخدم — أخبره فوراً
     if (needsFromUser.length > 0) {
       this.emitStep(taskId, "WARN", `⚠️ **قبل البدء يجب توفير:**\n${needsFromUser.map(n => `- ${n}`).join("\n")}\n\nيرجى تزويد هذه المعلومات في المحادثة حتى يتمكن الوكيل من إكمال المهمة.`);
     }
     await sleep(200);
-
-    const targetUrl = targetUrlEarly;
     const learningHint = learningEngine.buildContextHint(task.description);
     if (learningHint) {
       this.emitStep(taskId, "THINK", `🧠 من الذاكرة المتعلَّمة:\n${learningHint}`);
@@ -610,6 +622,15 @@ class AgentRunner extends EventEmitter {
         ? `\nسياق المحادثة: ${browserConvHistory.slice(-2).map(m => `${m.role === "user" ? "مستخدم" : "مساعد"}: ${m.content.substring(0, 80)}`).join(" | ")}\n`
         : "";
 
+      // ── قاعدة الرابط الصحيح: محقونة كأول رسالة حتى لا ينحرف الوكيل ──
+      const urlConstraint = targetUrl
+        ? [
+            `🔒 قاعدة ثابتة: الرابط الصحيح لهذه المهمة هو: ${targetUrl}`,
+            `لا تنتقل إلى أي رابط آخر ما لم تكن قد أكملت خطوة مهمة بالفعل.`,
+            `إذا رأيت "واتساب" أو "whatsapp" في المهمة — الرابط الصحيح هو ${targetUrl} وليس web.whatsapp.com أو business.whatsapp.com.`,
+          ].join("\n")
+        : "";
+
       // خطة DeepSeek العميقة تُضاف كسياق دائم في حلقة التنفيذ
       const deepPlanContext = plannedSteps.length > 0
         ? [
@@ -626,6 +647,7 @@ class AgentRunner extends EventEmitter {
         {
           role: "user",
           content: [
+            urlConstraint,
             `المهمة: ${task.description}${browserConvContext}`,
             deepPlanContext,
             pageHasNoInputs && isLoginTask
@@ -875,13 +897,17 @@ class AgentRunner extends EventEmitter {
     // ── التعلم من نجاح المهمة (فقط عند نجاح حقيقي) ──────────────────────
     try {
       const finalUrl = await browserAgent.getCurrentUrl();
-      // لا تسجّل نجاحاً إذا انتهينا بصفحة فارغة أو خطأ
+      // لا تسجّل نجاحاً إذا انتهينا بصفحة فارغة أو خطأ أو موقع خاطئ
+      const targetDomain = targetUrl ? new URL(targetUrl).hostname.replace(/^www\./, "") : null;
+      const finalDomain = finalUrl && finalUrl.startsWith("http") ? new URL(finalUrl).hostname.replace(/^www\./, "") : null;
+      const wrongSite = targetDomain && finalDomain && !finalDomain.includes(targetDomain) && !targetDomain.includes(finalDomain);
       const isRealSuccess = finalUrl &&
         finalUrl !== "about:blank" &&
         finalUrl !== "" &&
         !finalUrl.startsWith("data:") &&
         !verifyResult.includes("تعذّر") &&
-        !verifyResult.includes("فشل");
+        !verifyResult.includes("فشل") &&
+        !wrongSite;
       if (isRealSuccess) {
         learningEngine.learnFromSuccessfulNavigation(task.description, finalUrl);
         const taskData = taskStore.getTask(taskId);
@@ -1149,7 +1175,7 @@ function extractUrl(text: string): string | null {
     "ريديت": "https://www.reddit.com", "reddit": "https://www.reddit.com",
     "تيك توك": "https://www.tiktok.com", "tiktok": "https://www.tiktok.com",
     "أمازون": "https://www.amazon.com", "amazon": "https://www.amazon.com",
-    "واتساب": "https://web.whatsapp.com", "whatsapp": "https://web.whatsapp.com",
+    "واتساب شخصي": "https://web.whatsapp.com", "whatsapp personal": "https://web.whatsapp.com",
     "ويكيبيديا": "https://ar.wikipedia.org", "wikipedia": "https://en.wikipedia.org",
     "ستاك اوفرفلو": "https://stackoverflow.com", "stackoverflow": "https://stackoverflow.com",
     "ميتا للمطورين": "https://developers.facebook.com/",

@@ -317,12 +317,20 @@ class BrowserAgent extends EventEmitter {
     const h = hint.toLowerCase();
     const v = value.toLowerCase();
 
+    // استخراج المقطع الأخير من الـ hint (birthday_day → day، birthday_month → month)
+    const hintParts = hint.split(/[_\-\s]+/);
+    const shortHint = hintParts[hintParts.length - 1]; // "day" من "birthday_day"
+
     // ── 1. محاولة native <select> عبر Playwright مباشرةً (الأسرع والأكثر موثوقية) ──
     const nativeSelectors = [
       `select[name="${hint}"]`,
       `select[id="${hint}"]`,
+      `select[name="${shortHint}"]`,
+      `select[id="${shortHint}"]`,
       `select[name*="${hint}"]`,
       `select[id*="${hint}"]`,
+      `select[name*="${shortHint}"]`,
+      `select[id*="${shortHint}"]`,
     ];
 
     for (const sel of nativeSelectors) {
@@ -377,13 +385,15 @@ class BrowserAgent extends EventEmitter {
     }
 
     // ── 2. بحث شامل في كل select بجميع الإطارات ────────────────────────────
+    const sh = shortHint.toLowerCase();
     for (const frame of this.page.frames()) {
       try {
-        const found = await frame.evaluate((args: { h: string; v: string; value: string }) => {
+        const found = await frame.evaluate((args: { h: string; sh: string; v: string; value: string }) => {
           const selects = Array.from(document.querySelectorAll<HTMLSelectElement>("select"));
           for (const el of selects) {
             const ctx = [el.name, el.id, el.getAttribute("aria-label") || "", (el.labels && el.labels[0] ? el.labels[0].textContent : "") || "", (el.previousElementSibling as HTMLElement | null)?.textContent || ""].join(" ").toLowerCase();
-            const hintMatch = args.h === "" || ctx.includes(args.h);
+            // طابق إذا: ctx يحتوي على hint الكامل أو shortHint أو id/name الحقل موجود في hint
+            const hintMatch = args.h === "" || ctx.includes(args.h) || ctx.includes(args.sh) || args.h.includes(el.id.toLowerCase()) || args.h.includes(el.name.toLowerCase());
             if (!hintMatch) continue;
             const opts = Array.from(el.options);
             const match = opts.find(function(o) { return o.value === args.value || o.value.toLowerCase() === args.v || o.text.toLowerCase() === args.v || o.text.toLowerCase().includes(args.v) || args.v.includes(o.text.toLowerCase().trim()); });
@@ -396,7 +406,7 @@ class BrowserAgent extends EventEmitter {
             return true;
           }
           return false;
-        }, { h, v, value });
+        }, { h, sh, v, value });
         if (found) { console.log(`[select] broad search OK in ${frame.url()}`); return true; }
       } catch {}
     }
@@ -434,14 +444,22 @@ class BrowserAgent extends EventEmitter {
     if (!this.page) return false;
     const h = hint.toLowerCase();
     const v = value.toLowerCase();
+    // استخراج shortHint (birthday_day → day)
+    const hParts = hint.split(/[_\-\s]+/);
+    const short = hParts[hParts.length - 1].toLowerCase();
 
     // محاولات فتح القائمة بتسلسل متدرج
     const triggerSelectors = [
       `[role="combobox"][aria-label*="${hint}"]`,
       `[role="combobox"][name*="${hint}"]`,
       `[role="combobox"][id*="${hint}"]`,
+      `[role="combobox"][aria-label*="${short}"]`,
+      `[role="combobox"][name*="${short}"]`,
+      `[role="combobox"][id*="${short}"]`,
       `[aria-label*="${hint}"][aria-haspopup]`,
+      `[aria-label*="${short}"][aria-haspopup]`,
       `[name="${hint}"]`,
+      `[name="${short}"]`,
     ];
 
     // محاولة فتح بـ selector مباشر
@@ -459,14 +477,16 @@ class BrowserAgent extends EventEmitter {
 
     // بحث شامل في DOM عن زر القائمة بالنص/aria
     try {
-      const opened = await this.page.evaluate((args: { h: string }) => {
+      const opened = await this.page.evaluate((args: { h: string; short: string }) => {
         const candidates = Array.from(document.querySelectorAll<HTMLElement>('[role="combobox"],[role="listbox"],[aria-haspopup="listbox"],[aria-haspopup="true"],[class*="select"],[class*="dropdown"],[class*="picker"]'));
         for (const el of candidates) {
           const ctx = [el.getAttribute("aria-label") || "", el.getAttribute("name") || "", el.id || "", el.getAttribute("placeholder") || "", (el.closest("label") ? (el.closest("label") as HTMLElement).innerText : "") || ""].join(" ").toLowerCase();
-          if (ctx.includes(args.h)) { el.click(); return true; }
+          if (ctx.includes(args.h) || ctx.includes(args.short) || args.h.includes(el.id.toLowerCase()) || args.h.includes((el.getAttribute("name") || "").toLowerCase())) {
+            el.click(); return true;
+          }
         }
         return false;
-      }, { h });
+      }, { h, short });
       if (opened) {
         await this.page.waitForTimeout(500);
         if (await this._pickOpenOption(v)) return true;

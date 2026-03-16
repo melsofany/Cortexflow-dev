@@ -116,10 +116,11 @@ ACTION: <الإجراء> | PARAM: <القيمة>
 
 قاعدة select (للقوائم المنسدلة — native ومخصصة):
 - يعمل مع جميع أنواع القوائم: <select> الأصلية، React Select، Material UI، Ant Design، وغيرها
-- استخدم "مفتاح البحث" الظاهر بعد "PARAM:" في هيكل الصفحة — هذا هو الاسم الدقيق للحقل
-- مثال فيسبوك: birthday_day=15 | birthday_month=يناير | birthday_year=1990 | sex=ذكر
-- مثال عام: "select PARAM: birthday_day=15" وليس "select PARAM: يوم=15"
-- إذا لم يكن لديك الاسم الدقيق، استخدم النص المرئي للقائمة (مثل "يوم" أو "الشهر")
+- استخدم اسم الحقل الفعلي الظاهر في هيكل الصفحة (name= أو id=) — وليس اسماً تخمينياً
+- فيسبوك تحديداً: حقول تاريخ الميلاد تحمل id="day" و id="month" و id="year" (وليس birthday_day)
+  مثال صحيح: select PARAM: day=15 | select PARAM: month=2 | select PARAM: year=1990
+- مثال جنس: select PARAM: sex=ذكر (إذا ظهر id="sex" في الهيكل)
+- إذا لم يظهر الاسم الدقيق في الهيكل، استخدم النص المرئي (مثال: select PARAM: اليوم=15)
 
 قاعدة done (مهمة جداً — لا تتجاهلها):
 - لا تستخدم "done" إلا بعد التحقق الفعلي من نجاح العملية:
@@ -138,16 +139,16 @@ ACTION: ask | PARAM: أدخل بريدك الإلكتروني
 ACTION: fill | PARAM: reg_email__=ahmed@example.com
 ACTION: ask | PARAM: أدخل كلمة المرور
 ACTION: fill | PARAM: reg_passwd__=MyPassword123
-ACTION: select | PARAM: birthday_day=15
-ACTION: select | PARAM: birthday_month=يناير
-ACTION: select | PARAM: birthday_year=1990
+ACTION: select | PARAM: day=15
+ACTION: select | PARAM: month=2
+ACTION: select | PARAM: year=1990
 ACTION: select | PARAM: sex=ذكر
 ACTION: click | PARAM: Create new account
 ACTION: wait | PARAM: waiting
 [الآن تحقق من URL والصفحة — إذا تغيّرت → done، إذا بقيت أخطاء → صحّح]
 ACTION: done | PARAM: تم إنشاء الحساب بنجاح (فقط إذا تغيّرت الصفحة فعلاً)
 
-تنبيه مهم: لا تكتب "يوم=15" أو "الشهر=يناير" — استخدم دائماً الاسم الإنجليزي: birthday_day و birthday_month و birthday_year
+تنبيه مهم: استخدم دائماً اسم الحقل الفعلي الظاهر في بنية الصفحة (name= أو id=). فيسبوك: id="day"، id="month"، id="year" — وليس "birthday_day".
 
 القواعد الصارمة:
 - أخرج سطر ACTION واحد فقط، لا شيء آخر أبداً
@@ -361,6 +362,20 @@ class AgentRunner extends EventEmitter {
 
   private async executeBrowserTask(task: Task, start: number, model: string): Promise<void> {
     const taskId = task.taskId;
+
+    // أرسل خطة تمثيلية فوراً لإيقاف spinner التخطيط في الواجهة
+    const browserPlan = {
+      goal: task.description,
+      category: "browser",
+      estimatedTime: "1–3 دقائق",
+      createdAt: new Date(),
+      steps: [
+        { id: 1, title: "مراقبة الصفحة", description: "فحص بنية الصفحة المستهدفة", agent: "browser" as const, status: "running" as const },
+        { id: 2, title: "تنفيذ الإجراءات", description: "تعبئة النماذج والتفاعل مع العناصر", agent: "browser" as const, status: "pending" as const },
+        { id: 3, title: "التحقق من النتيجة", description: "التأكد من اكتمال المهمة", agent: "browser" as const, status: "pending" as const },
+      ],
+    };
+    this.emit("taskPlan", { taskId, plan: browserPlan });
 
     this.emitStep(taskId, "OBSERVE", `تحليل مهمة التصفح: "${task.description}"`);
     await sleep(300);

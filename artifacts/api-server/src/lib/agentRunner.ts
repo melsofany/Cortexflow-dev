@@ -9,9 +9,9 @@ const MAX_ITERATIONS = 20;
 const MAX_RETRIES    = 2;
 const AGENT_SERVICE  = process.env.AGENT_SERVICE_URL || "http://localhost:8090";
 
-const DEEPSEEK_KEY   = process.env.DEEPSEEK_API_KEY || "";
 const DEEPSEEK_URL   = "https://api.deepseek.com/v1/chat/completions";
 const DEEPSEEK_MODEL = "deepseek-chat";
+const getDeepSeekKey = () => process.env.DEEPSEEK_API_KEY || "";
 
 function isWeakResponse(text: string): boolean {
   if (!text || text.trim().length < 20) return true;
@@ -25,6 +25,7 @@ async function deepseekChat(
   maxTokens = 800,
   temperature = 0.35,
 ): Promise<string> {
+  const DEEPSEEK_KEY = getDeepSeekKey();
   if (!DEEPSEEK_KEY) return "";
   try {
     // إضافة تعليمة عربية إذا لم تكن الرسالة الأولى نظام بالفعل
@@ -55,7 +56,7 @@ async function smartChat(
   stepName = "",
 ): Promise<string> {
   // DeepSeek API أولاً — إذا كان المفتاح متاحاً
-  if (DEEPSEEK_KEY) {
+  if (getDeepSeekKey()) {
     const hint = stepName ? `\n[المرحلة الحالية: ${stepName}]` : "";
     const msgs = hint && messages.length
       ? [...messages.slice(0, -1), { ...messages[messages.length - 1], content: messages[messages.length - 1].content + hint }]

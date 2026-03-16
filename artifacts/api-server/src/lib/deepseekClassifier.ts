@@ -1,7 +1,7 @@
 import axios from "axios";
 import { TaskCategory } from "./modelSelector.js";
 
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
+const getDeepSeekApiKey = () => process.env.DEEPSEEK_API_KEY;
 const DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1";
 const OLLAMA_BASE_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 
@@ -45,6 +45,7 @@ async function getLocalDeepSeekModel(): Promise<string | null> {
 }
 
 async function classifyViaCloudDeepSeek(taskDescription: string): Promise<TaskCategory | null> {
+  const DEEPSEEK_API_KEY = getDeepSeekApiKey();
   if (!DEEPSEEK_API_KEY) return null;
 
   if (cloudAvailable === false) return null;
@@ -127,7 +128,5 @@ export async function classifyWithDeepSeek(
 }
 
 export function isDeepSeekConfigured(): boolean {
-  return !!DEEPSEEK_API_KEY;
+  return !!getDeepSeekApiKey();
 }
-
-export { DEEPSEEK_API_KEY };

@@ -91,7 +91,7 @@ ACTION: <الإجراء> | PARAM: <القيمة>
   key       - ضغط مفتاح: PARAM: Enter أو Tab أو Escape
   scroll    - التمرير: PARAM: up أو down
   wait      - انتظار: PARAM: waiting
-  done      - المهمة مكتملة: PARAM: وصف الإنجاز
+  done      - المهمة مكتملة (استخدمه فقط بعد التحقق الفعلي من نجاح العملية): PARAM: وصف الإنجاز
 
 قاعدة ask (مهمة جداً):
 - استخدم ask دائماً للبيانات الحساسة قبل استخدام fill:
@@ -114,12 +114,19 @@ ACTION: <الإجراء> | PARAM: <القيمة>
 قاعدة select (للقوائم المنسدلة — native ومخصصة):
 - يعمل مع جميع أنواع القوائم: <select> الأصلية، React Select، Material UI، Ant Design، وغيرها
 - استخدم "مفتاح البحث" الظاهر بعد "PARAM:" في هيكل الصفحة — هذا هو الاسم الدقيق للحقل
-- يمكن أيضاً استخدام "مفتاح البحث" الظاهر بين قوسين "(مفتاح البحث: ...)" كبديل
 - مثال فيسبوك: birthday_day=15 | birthday_month=يناير | birthday_year=1990 | sex=ذكر
 - مثال عام: "select PARAM: birthday_day=15" وليس "select PARAM: يوم=15"
 - إذا لم يكن لديك الاسم الدقيق، استخدم النص المرئي للقائمة (مثل "يوم" أو "الشهر")
 
-أمثلة كاملة لتسجيل في فيسبوك (استخدم الأسماء الدقيقة من هيكل الصفحة):
+قاعدة done (مهمة جداً — لا تتجاهلها):
+- لا تستخدم "done" إلا بعد التحقق الفعلي من نجاح العملية:
+  * تأكد من أن URL الصفحة تغيّر إلى صفحة تأكيد أو نجاح
+  * أو تأكد من ظهور رسالة نجاح واضحة في الصفحة
+  * أو تأكد من اختفاء النموذج وظهور محتوى جديد
+- إذا بقيت على نفس الصفحة بعد الضغط → إما توجد أخطاء يجب تصحيحها، أو المهمة لم تكتمل
+- بعد النقر على زر الإرسال أو التأكيد: استخدم "wait" أولاً، ثم قيّم الصفحة قبل "done"
+
+أمثلة كاملة لتسجيل في فيسبوك:
 ACTION: navigate | PARAM: https://www.facebook.com
 ACTION: click | PARAM: Create new account
 ACTION: fill | PARAM: firstname=أحمد
@@ -133,14 +140,16 @@ ACTION: select | PARAM: birthday_month=يناير
 ACTION: select | PARAM: birthday_year=1990
 ACTION: select | PARAM: sex=ذكر
 ACTION: click | PARAM: Create new account
-ACTION: done | PARAM: تم إنشاء الحساب بنجاح
+ACTION: wait | PARAM: waiting
+[الآن تحقق من URL والصفحة — إذا تغيّرت → done، إذا بقيت أخطاء → صحّح]
+ACTION: done | PARAM: تم إنشاء الحساب بنجاح (فقط إذا تغيّرت الصفحة فعلاً)
 
-تنبيه مهم: لا تكتب "يوم=15" أو "الشهر=يناير" — استخدم دائماً الاسم الإنجليزي من هيكل الصفحة: birthday_day و birthday_month و birthday_year
+تنبيه مهم: لا تكتب "يوم=15" أو "الشهر=يناير" — استخدم دائماً الاسم الإنجليزي: birthday_day و birthday_month و birthday_year
 
 القواعد الصارمة:
 - أخرج سطر ACTION واحد فقط، لا شيء آخر أبداً
 - للقوائم [قائمة] استخدم select وليس fill أو click
-- استخدم "done" فقط بعد اكتمال المهمة الكاملة فعلاً`;
+- استخدم "done" فقط بعد التحقق الفعلي من نجاح المهمة (تغيّر URL أو ظهور رسالة نجاح)`;
 
 const ARABIC_RULE = `\nقاعدة أساسية: جميع ردودك وتفكيرك يجب أن يكون باللغة العربية حصراً.`;
 
@@ -394,8 +403,34 @@ class AgentRunner extends EventEmitter {
         this.emitStep(taskId, "ACT", `خطوة ${i}: ${action} → ${param}`);
 
         if (action === "done") {
-          finalResult = param || "اكتملت المهمة بنجاح";
-          break;
+          // تحقق حقيقي: انتظر ثم تحقق من وجود أخطاء أو بقاء في نفس الصفحة
+          await sleep(1500);
+          const currentUrl = await browserAgent.getCurrentUrl();
+          const pageErrors = await browserAgent.detectErrors();
+          const pageContent = await browserAgent.getPageContent();
+
+          // اكتشاف مؤشرات النجاح الحقيقي
+          const successKeywords = ["تهانينا", "congratulations", "welcome", "مرحباً", "تم التسجيل", "تم الإنشاء", "تحقق", "بريد", "inbox", "home", "feed", "success"];
+          const hasSuccess = successKeywords.some(k => pageContent.toLowerCase().includes(k.toLowerCase()));
+
+          // اكتشاف مؤشرات الفشل (لا تزال على نفس الصفحة)
+          const stillOnForm = pageContent.toLowerCase().includes("create new account") || pageContent.toLowerCase().includes("إنشاء حساب جديد");
+
+          if (pageErrors.length > 0) {
+            // هناك أخطاء ظاهرة — لا تقبل done
+            const errText = pageErrors.join(" | ");
+            this.emitStep(taskId, "ERR", `⚠️ لم تكتمل المهمة — أخطاء: ${errText}`);
+            history.push({ role: "user", content: `تحذير: طلبت done لكن توجد أخطاء في الصفحة: "${errText}"\nURL الحالي: ${currentUrl}\nيجب تصحيح الأخطاء أولاً باستخدام ask أو fill قبل المتابعة.` });
+            continue;
+          } else if (stillOnForm && !hasSuccess) {
+            // لا تزال على نفس الصفحة بدون رسالة نجاح — استمر
+            this.emitStep(taskId, "ACT", `⚠️ لا تزال على نفس الصفحة — تحقق من اكتمال العملية`);
+            history.push({ role: "user", content: `تحذير: طلبت done لكن الصفحة لم تتغير (لا تزال على نموذج التسجيل).\nURL الحالي: ${currentUrl}\nإما أن هناك أخطاء غير ظاهرة أو أن الزر لم يُضغط. تابع التنفيذ.` });
+            continue;
+          } else {
+            finalResult = param || "اكتملت المهمة بنجاح";
+            break;
+          }
         }
 
         // ── إجراء ask: توقف وانتظار إدخال المستخدم ───────────────────────────

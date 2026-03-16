@@ -342,20 +342,33 @@ class BrowserAgent extends EventEmitter {
     // التحقق من أن قيمة select تغيّرت فعلاً بعد الاختيار (مع انتظار render React)
     const verifySelected = async (selector: string, expectedValue: string): Promise<boolean> => {
       try {
-        // انتظر React لإعادة الرسم
-        await this.page!.waitForTimeout(150);
-        const loc = this.page!.locator(selector).first();
-        const currentVal = await loc.inputValue().catch(() => "");
-        // تحقق من القيمة أو النص المعروض
-        const currentText = currentVal
-          ? await loc.locator(`option[value="${currentVal}"]`).textContent().catch(() => currentVal)
-          : "";
+        // انتظر React لإعادة الرسم (500ms بدلاً من 150ms)
+        await this.page!.waitForTimeout(500);
         const ev = expectedValue.toLowerCase();
-        if (!currentVal && !currentText) return false;
-        return currentVal.toLowerCase() === ev ||
-               (currentText || "").toLowerCase().includes(ev) ||
-               ev.includes((currentText || "").toLowerCase().trim());
+        // استخدام evaluate مباشرةً للتحقق من قيمة الـ select (أكثر موثوقية)
+        const result = await this.page!.evaluate(({ selector, ev }) => {
+          const el = document.querySelector<HTMLSelectElement>(selector);
+          if (!el) return false;
+          const curVal = (el.value || "").toLowerCase();
+          const curText = (el.options[el.selectedIndex]?.text || "").toLowerCase().trim();
+          if (!curVal && !curText) return false;
+          return curVal === ev ||
+                 curText.includes(ev) ||
+                 ev.includes(curText);
+        }, { selector, ev });
+        return result;
       } catch { return false; }
+    };
+
+    // التحقق من النص الحالي المختار عبر evaluate (أكثر موثوقية)
+    const getCurrentSelectedText = async (selector: string): Promise<string> => {
+      try {
+        return await this.page!.evaluate((sel) => {
+          const el = document.querySelector<HTMLSelectElement>(sel);
+          if (!el) return "";
+          return (el.options[el.selectedIndex]?.text || "").toLowerCase().trim();
+        }, selector);
+      } catch { return ""; }
     };
 
     // اختيار بالكيبورد: ضغط مفاتيح لاختيار القيمة المطلوبة
@@ -364,38 +377,27 @@ class BrowserAgent extends EventEmitter {
         const loc = this.page!.locator(selector).first();
         await loc.waitFor({ state: "visible", timeout: 3000 });
         await loc.click();
-        await this.page!.waitForTimeout(200);
-        // ضغط الحرف الأول من القيمة للقفز إليها
-        const firstChar = value[0]?.toLowerCase() || "";
-        if (firstChar) {
-          await loc.press(firstChar);
-          await this.page!.waitForTimeout(100);
-        }
-        // انتقل بالأسهم لإيجاد الخيار الصحيح (حتى 50 مرة)
-        for (let i = 0; i < 50; i++) {
-          const cur = await loc.inputValue().catch(() => "");
-          const curText = await loc.locator(`option[value="${cur}"]`).textContent().catch(() => cur);
-          const ev = value.toLowerCase();
-          if (cur.toLowerCase() === ev || (curText || "").toLowerCase().includes(ev) || ev.includes((curText || "").toLowerCase().trim())) {
-            // تأكيد الاختيار بـ Enter
-            await loc.press("Enter");
-            await this.page!.waitForTimeout(100);
+        await this.page!.waitForTimeout(300);
+        const ev = value.toLowerCase();
+        // انتقل بالأسهم لإيجاد الخيار الصحيح (حتى 60 مرة)
+        for (let i = 0; i < 60; i++) {
+          const curText = await getCurrentSelectedText(selector);
+          if (curText.includes(ev) || ev.includes(curText)) {
+            await this.page!.waitForTimeout(200);
             return true;
           }
           await loc.press("ArrowDown");
-          await this.page!.waitForTimeout(50);
+          await this.page!.waitForTimeout(60);
         }
-        // جرّب أيضاً من البداية بالضغط إلى الأعلى
-        for (let i = 0; i < 50; i++) {
-          const cur = await loc.inputValue().catch(() => "");
-          const curText = await loc.locator(`option[value="${cur}"]`).textContent().catch(() => cur);
-          const ev = value.toLowerCase();
-          if (cur.toLowerCase() === ev || (curText || "").toLowerCase().includes(ev) || ev.includes((curText || "").toLowerCase().trim())) {
-            await loc.press("Enter");
+        // جرّب من البداية للأعلى
+        for (let i = 0; i < 60; i++) {
+          const curText = await getCurrentSelectedText(selector);
+          if (curText.includes(ev) || ev.includes(curText)) {
+            await this.page!.waitForTimeout(200);
             return true;
           }
           await loc.press("ArrowUp");
-          await this.page!.waitForTimeout(50);
+          await this.page!.waitForTimeout(60);
         }
         return false;
       } catch { return false; }

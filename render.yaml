@@ -8,7 +8,7 @@ services:
     buildCommand: >-
       npm install -g pnpm@10 &&
       pnpm install --frozen-lockfile &&
-      npx playwright install chromium --with-deps &&
+      PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium --with-deps &&
       (pnpm --filter @workspace/api-zod build || true) &&
       pnpm --filter @workspace/api-server build
     startCommand: "node artifacts/api-server/dist/index.cjs"
@@ -20,6 +20,8 @@ services:
         value: production
       - key: PORT
         value: "10000"
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: "0"
       - key: AGENT_SERVICE_URL
         value: https://cortexflow-agent.onrender.com
       - key: OLLAMA_URL
@@ -37,7 +39,7 @@ services:
     branch: master
     buildCommand: >-
       pip install -r artifacts/agent-service/requirements.txt &&
-      playwright install chromium --with-deps
+      PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium --with-deps
     startCommand: "python artifacts/agent-service/main.py"
     healthCheckPath: /health
     plan: starter

@@ -672,10 +672,10 @@ class TechIntelligenceSystem {
       axios.get(`${AGENT_SERVICE}/health`, { timeout: 60000 })
         .then(() => console.log("[TechIntelligence] ✅ خدمة الوكيل مستيقظة"))
         .catch(() => console.log("[TechIntelligence] ⚠️ خدمة الوكيل لم تستجب للإيقاظ"));
-      // تأخير الفحص الأول 35 ثانية لإعطاء الوقت للإيقاظ
+      // تأخير الفحص الأول 90 ثانية لإعطاء الوقت للإيقاظ الكامل لكل الخدمات
       setTimeout(() => {
         this.monitor.checkHealth().catch(console.error);
-      }, 35 * 1000);
+      }, 90 * 1000);
     } else {
       // فحص فوري عند البدء في بيئة التطوير
       this.monitor.checkHealth().catch(console.error);

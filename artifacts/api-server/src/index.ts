@@ -332,9 +332,22 @@ async function startServer() {
       console.log(`[Server] Browser: ${ok ? "✓ Chromium ready" : "✗ not available"}`);
       techIntelligence.monitor.setBrowserHealth(ok);
       broadcastHealth();
+      // في السحابة: إعادة المحاولة مرة واحدة بعد 30 ثانية إذا فشل
+      if (!ok && IS_CLOUD) {
+        setTimeout(() => {
+          console.log("[Server] Browser: إعادة محاولة تشغيل Chromium...");
+          browserAgent.initialize().then((ok2) => {
+            console.log(`[Server] Browser retry: ${ok2 ? "✓ نجح" : "✗ فشل"}`);
+            techIntelligence.monitor.setBrowserHealth(ok2);
+            broadcastHealth();
+          }).catch((e2) => {
+            console.error("[Server] Browser retry error:", String(e2));
+          });
+        }, 30000);
+      }
     })
-    .catch(() => {
-      console.warn("[Server] Browser init warning");
+    .catch((err) => {
+      console.error("[Server] Browser init error:", String(err));
       techIntelligence.monitor.setBrowserHealth(false);
       broadcastHealth();
     });

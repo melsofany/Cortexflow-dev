@@ -428,7 +428,7 @@ class BrowserSelectTool(Tool):
     )
 
     _DRIVER_CODE = """
-import time, sys
+import time, sys, os, shutil
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select, WebDriverWait
@@ -445,6 +445,18 @@ opts.add_argument("--headless")
 opts.add_argument("--no-sandbox")
 opts.add_argument("--disable-dev-shm-usage")
 opts.add_argument("--disable-gpu")
+
+# اكتشاف مسار Chrome/Chromium تلقائياً
+chrome_paths = [
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+]
+for p in chrome_paths:
+    if os.path.exists(p):
+        opts.binary_location = p
+        break
 
 driver = webdriver.Chrome(options=opts)
 wait   = WebDriverWait(driver, 15)
@@ -559,7 +571,7 @@ class BrowserPageAnalyzerTool(Tool):
     )
 
     _ANALYZE_CODE = """
-import time, json
+import time, json, os
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
@@ -571,6 +583,18 @@ opts.add_argument("--headless")
 opts.add_argument("--no-sandbox")
 opts.add_argument("--disable-dev-shm-usage")
 opts.add_argument("--disable-gpu")
+
+# اكتشاف مسار Chrome/Chromium تلقائياً
+chrome_paths = [
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+]
+for p in chrome_paths:
+    if os.path.exists(p):
+        opts.binary_location = p
+        break
 
 driver = webdriver.Chrome(options=opts)
 result = []

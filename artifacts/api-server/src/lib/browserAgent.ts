@@ -1,8 +1,10 @@
 import { chromium, Browser, BrowserContext, Page } from "playwright";
 import { solveCaptcha } from "./captchaSolver";
 import { EventEmitter } from "events";
+import { existsSync } from "fs";
 
-const CHROMIUM_PATH = "/nix/store/0n9rl5l9syy808xi9bk4f6dhnfrvhkww-playwright-browsers-chromium/chromium-1080/chrome-linux/chrome";
+const REPLIT_CHROMIUM_PATH = "/nix/store/0n9rl5l9syy808xi9bk4f6dhnfrvhkww-playwright-browsers-chromium/chromium-1080/chrome-linux/chrome";
+const CHROMIUM_PATH = existsSync(REPLIT_CHROMIUM_PATH) ? REPLIT_CHROMIUM_PATH : undefined;
 
 class BrowserAgent extends EventEmitter {
   private browser: Browser | null = null;
@@ -45,7 +47,7 @@ class BrowserAgent extends EventEmitter {
     if (this.initialized) return true;
     try {
       this.browser = await chromium.launch({
-        executablePath: CHROMIUM_PATH,
+        ...(CHROMIUM_PATH ? { executablePath: CHROMIUM_PATH } : {}),
         headless: true,
         args: [
           "--no-sandbox",

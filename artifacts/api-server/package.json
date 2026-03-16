@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "NODE_ENV=development tsx ./src/index.ts",
     "build": "tsx ./build.ts",
+    "postinstall": "npx playwright install chromium --with-deps 2>/dev/null || true",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

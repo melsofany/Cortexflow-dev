@@ -349,11 +349,33 @@ class BrowserAgent extends EventEmitter {
           el.dispatchEvent(new Event("change", { bubbles: true }));
         };
 
+        // دالة تجمع كل النصوص المرئية المرتبطة بالعنصر
+        const getElementContext = (sel: HTMLSelectElement): string => {
+          const parts: string[] = [];
+          parts.push((sel.name  || "").toLowerCase());
+          parts.push((sel.id    || "").toLowerCase());
+          // التسمية المرتبطة (label[for])
+          const lbl = sel.labels?.[0]?.textContent || "";
+          parts.push(lbl.toLowerCase());
+          // aria-label
+          parts.push((sel.getAttribute("aria-label") || "").toLowerCase());
+          // title
+          parts.push((sel.getAttribute("title") || "").toLowerCase());
+          // placeholder أو النص المرئي للخيار الأول (كثيراً ما يصف الحقل)
+          const firstOpt = sel.options[0]?.text || "";
+          parts.push(firstOpt.toLowerCase());
+          // النص في العنصر الأب أو الأشقاء المجاورة (للحصول على السياق)
+          const parent = sel.parentElement;
+          if (parent) parts.push((parent.textContent || "").toLowerCase().slice(0, 100));
+          // العنصر السابق مباشرة
+          const prev = sel.previousElementSibling;
+          if (prev) parts.push((prev.textContent || "").toLowerCase().slice(0, 60));
+          return parts.join(" ");
+        };
+
         for (const sel of Array.from(document.querySelectorAll<HTMLSelectElement>("select"))) {
-          const nm  = (sel.name || "").toLowerCase();
-          const id  = (sel.id   || "").toLowerCase();
-          const lbl = (sel.labels?.[0]?.textContent || "").toLowerCase();
-          if (!nm.includes(h) && !id.includes(h) && !lbl.includes(h)) continue;
+          const ctx = getElementContext(sel);
+          if (!ctx.includes(h)) continue;
 
           // ابحث عن الخيار الأنسب
           const opts = Array.from(sel.options);
@@ -448,7 +470,9 @@ class BrowserAgent extends EventEmitter {
             label: el.labels?.[0]?.textContent?.trim() || "",
           };
           if (el.tagName === "SELECT") {
-            base.options = Array.from(el.options).slice(0, 15).map((o: any) => o.text.trim()).filter(Boolean);
+            const allOpts = Array.from(el.options).map((o: any) => o.text.trim()).filter(Boolean);
+            base.options = allOpts.slice(0, 15);
+            base.firstOption = allOpts[0] || "";
           }
           return base;
         });
@@ -504,7 +528,9 @@ class BrowserAgent extends EventEmitter {
           const fillKey      = inp.name || inp.id || inp.type;
           if (inp.tag === "select") {
             const opts = (inp.options || []).join(" | ");
-            lines.push(`  - [قائمة] select PARAM: ${fillKey}=<الخيار>  (تسمية: "${visibleLabel}", خيارات: ${opts})`);
+            const firstOpt = inp.firstOption || "";
+            const labelHint = visibleLabel || firstOpt;
+            lines.push(`  - [قائمة] select PARAM: ${fillKey}=<الخيار>  (مفتاح البحث: "${labelHint}", خيارات: ${opts})`);
           } else {
             const identifier = inp.name ? `name="${inp.name}"` : (inp.id ? `id="${inp.id}"` : `type="${inp.type}"`);
             lines.push(`  - [حقل] fill PARAM: ${fillKey}=<القيمة>  (${identifier}${visibleLabel ? `, تسمية: "${visibleLabel}"` : ""})`);

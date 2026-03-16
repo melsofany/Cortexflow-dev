@@ -113,23 +113,29 @@ ACTION: <الإجراء> | PARAM: <القيمة>
 
 قاعدة select (للقوائم المنسدلة — native ومخصصة):
 - يعمل مع جميع أنواع القوائم: <select> الأصلية، React Select، Material UI، Ant Design، وغيرها
-- استخدم اسم القائمة من name= أو id= أو aria-label= أو التسمية المرئية
-- مثال: "select PARAM: month=يناير" ← "select PARAM: year=1990" ← "select PARAM: day=15"
-- إذا ظهرت قائمة مخصصة في هيكل الصفحة، استخدم select بنفس الطريقة — النظام سيتعامل معها تلقائياً
+- استخدم "مفتاح البحث" الظاهر بعد "PARAM:" في هيكل الصفحة — هذا هو الاسم الدقيق للحقل
+- يمكن أيضاً استخدام "مفتاح البحث" الظاهر بين قوسين "(مفتاح البحث: ...)" كبديل
+- مثال فيسبوك: birthday_day=15 | birthday_month=يناير | birthday_year=1990 | sex=ذكر
+- مثال عام: "select PARAM: birthday_day=15" وليس "select PARAM: يوم=15"
+- إذا لم يكن لديك الاسم الدقيق، استخدم النص المرئي للقائمة (مثل "يوم" أو "الشهر")
 
-أمثلة كاملة لتسجيل في فيسبوك:
+أمثلة كاملة لتسجيل في فيسبوك (استخدم الأسماء الدقيقة من هيكل الصفحة):
 ACTION: navigate | PARAM: https://www.facebook.com
 ACTION: click | PARAM: Create new account
 ACTION: fill | PARAM: firstname=أحمد
 ACTION: fill | PARAM: lastname=محمد
+ACTION: ask | PARAM: أدخل بريدك الإلكتروني
 ACTION: fill | PARAM: reg_email__=ahmed@example.com
+ACTION: ask | PARAM: أدخل كلمة المرور
 ACTION: fill | PARAM: reg_passwd__=MyPassword123
 ACTION: select | PARAM: birthday_day=15
 ACTION: select | PARAM: birthday_month=يناير
 ACTION: select | PARAM: birthday_year=1990
-ACTION: select | PARAM: sex=1
+ACTION: select | PARAM: sex=ذكر
 ACTION: click | PARAM: Create new account
 ACTION: done | PARAM: تم إنشاء الحساب بنجاح
+
+تنبيه مهم: لا تكتب "يوم=15" أو "الشهر=يناير" — استخدم دائماً الاسم الإنجليزي من هيكل الصفحة: birthday_day و birthday_month و birthday_year
 
 القواعد الصارمة:
 - أخرج سطر ACTION واحد فقط، لا شيء آخر أبداً

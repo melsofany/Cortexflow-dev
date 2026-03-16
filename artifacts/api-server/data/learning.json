@@ -2,9 +2,9 @@
   "urls": [
     {
       "keyword": "ميتا للمطورين  باستخ",
-      "url": "https://business.facebook.com",
-      "count": 1,
-      "lastUsed": "2026-03-16T06:32:58.724Z"
+      "url": "https://www.facebook.com",
+      "count": 3,
+      "lastUsed": "2026-03-16T06:58:48.742Z"
     },
     {
       "keyword": "business",
@@ -14,9 +14,15 @@
     },
     {
       "keyword": "facebook",
-      "url": "https://business.facebook.com",
+      "url": "https://www.facebook.com",
+      "count": 2,
+      "lastUsed": "2026-03-16T06:58:48.742Z"
+    },
+    {
+      "keyword": "two_step_verification",
+      "url": "https://www.facebook.com",
       "count": 1,
-      "lastUsed": "2026-03-16T06:32:58.725Z"
+      "lastUsed": "2026-03-16T06:58:48.742Z"
     }
   ],
   "strategies": [
@@ -25,16 +31,16 @@
       "steps": [
         "MODEL: تصنيف المهمة: 🌐 تصفح ويب\nالنموذج المختار: qwen2:0.5b\nالسبب:",
         "OBSERVE: تحليل مهمة التصفح: \"قم بالدخول  لموقع  ميتا للمطورين  باستخد",
-        "THINK: **التفكير (THINK):**\n\n1. **الموقع المستهدف:** الموقع المذكور",
-        "PLAN: **خطوات تنفيذ المهمة:**\n\n1.  **الوصول إلى الموقع:** سأقوم با",
+        "THINK: **التفكير (THINK):**\n\nالمستخدم يطلب الدخول إلى موقع \"ميتا لل",
+        "THINK: 🧠 من الذاكرة المتعلَّمة:\n💡 استراتيجية ناجحة مشابهة (نجحت 1",
+        "PLAN: **خطوات تنفيذ المهمة:**\n\n1.  **التحضير:**\n    *   التأكد من ",
         "ACT: بدء التنفيذ بنموذج qwen2:0.5b...",
         "ACT: خطوة 0: الانتقال إلى https://developers.facebook.com/",
-        "WARN: ⚠️ الصفحة الحالية لا تحتوي على حقول إدخال. إذا كانت المهمة ت",
-        "THINK: تحليل الصفحة:\nالصفحة: تقنيات التواصل الاجتماعي | Meta للمطوّ"
+        "WARN: ⚠️ الصفحة الحالية لا تحتوي على حقول إدخال. إذا كانت المهمة ت"
       ],
-      "successCount": 1,
+      "successCount": 2,
       "failCount": 0,
-      "lastUsed": "2026-03-16T06:32:58.725Z",
+      "lastUsed": "2026-03-16T06:58:48.743Z",
       "tags": [
         "واتساب",
         "ميتا",
@@ -46,9 +52,9 @@
     }
   ],
   "preferences": [],
-  "totalTasks": 1,
-  "successfulTasks": 1,
+  "totalTasks": 2,
+  "successfulTasks": 2,
   "failedTasks": 0,
   "createdAt": "2026-03-16T06:22:02.952Z",
-  "updatedAt": "2026-03-16T06:32:58.725Z"
+  "updatedAt": "2026-03-16T06:58:48.753Z"
 }

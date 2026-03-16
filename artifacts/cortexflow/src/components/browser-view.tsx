@@ -21,8 +21,10 @@ export function BrowserView() {
   const [manualMode, setManualMode] = useState(false);
   const [captchaMode, setCaptchaMode] = useState(false);
   const [isMouseDown, setIsMouseDown] = useState(false);
+  const [debugCoords, setDebugCoords] = useState<{x:number;y:number} | null>(null);
 
-  const lastMoveRef = useRef<number>(0);
+  const lastMoveRef  = useRef<number>(0);
+  const lastClickRef = useRef<{x:number;y:number} | null>(null);
 
   const toBrowserCoords = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -44,6 +46,17 @@ export function BrowserView() {
     const img = new Image();
     imgRef.current = img;
 
+    const drawCrosshair = (bx: number, by: number) => {
+      const r = 16;
+      ctx.save();
+      ctx.strokeStyle = '#ff0000';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(bx - r, by); ctx.lineTo(bx + r, by); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(bx, by - r); ctx.lineTo(bx, by + r); ctx.stroke();
+      ctx.beginPath(); ctx.arc(bx, by, r / 2, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    };
+
     const handleStream = (data: { image: string; url?: string }) => {
       if (!hasStream) setHasStream(true);
       if (data.url && data.url !== currentUrl) {
@@ -53,6 +66,9 @@ export function BrowserView() {
       img.onload = () => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        if (lastClickRef.current) {
+          drawCrosshair(lastClickRef.current.x, lastClickRef.current.y);
+        }
       };
       img.src = `data:image/jpeg;base64,${data.image}`;
     };
@@ -78,6 +94,8 @@ export function BrowserView() {
     e.preventDefault();
     setIsMouseDown(true);
     const coords = toBrowserCoords(e);
+    lastClickRef.current = coords;
+    setDebugCoords(coords);
     socket.emit('userMouseDown', coords);
   }, [socket, manualMode, captchaMode, toBrowserCoords]);
 
@@ -232,25 +250,38 @@ export function BrowserView() {
         style={{ outline: 'none' }}
       >
         {hasStream ? (
-          <canvas
-            ref={canvasRef}
-            width={BROWSER_W}
-            height={BROWSER_H}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              width: '100%',
-              height: '100%',
-              cursor: isInteractive ? 'crosshair' : 'default',
-              userSelect: 'none',
-              WebkitUserSelect: 'none' as any,
-            }}
-            onMouseMove={handleMouseMove}
-            onMouseDown={handleMouseDown}
-            onMouseUp={handleMouseUp}
-            onWheel={handleWheel}
-            onContextMenu={e => e.preventDefault()}
-          />
+          <>
+            <canvas
+              ref={canvasRef}
+              width={BROWSER_W}
+              height={BROWSER_H}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                cursor: isInteractive ? 'crosshair' : 'default',
+                userSelect: 'none',
+                WebkitUserSelect: 'none' as any,
+              }}
+              onMouseMove={handleMouseMove}
+              onMouseDown={handleMouseDown}
+              onMouseUp={handleMouseUp}
+              onWheel={handleWheel}
+              onContextMenu={e => e.preventDefault()}
+            />
+            {isInteractive && debugCoords && (
+              <div style={{
+                position: 'absolute', bottom: 8, left: 8, zIndex: 30,
+                background: 'rgba(0,0,0,0.75)', color: '#ff4444',
+                fontFamily: 'monospace', fontSize: 11, padding: '3px 8px',
+                borderRadius: 4, border: '1px solid #ff4444',
+                pointerEvents: 'none',
+              }}>
+                🖱 {debugCoords.x} , {debugCoords.y}
+              </div>
+            )}
+          </>
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-8">
             <img

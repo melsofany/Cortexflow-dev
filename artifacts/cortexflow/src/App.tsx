@@ -4,7 +4,8 @@ import {
   Send, Bot, User, Brain, Info, CheckCircle2,
   Loader2, RefreshCw, History, Monitor,
   Terminal, AlertTriangle, X, Check, Globe,
-  Eye, Zap, Play, Layers, Clock, Activity,
+  Eye, EyeOff, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen,
+  Zap, Play, Layers, Clock, Activity,
   ArrowLeft, ArrowRight, RotateCcw, Keyboard,
   Search, Code2, ListChecks, ChevronRight, Sparkles,
   Network, BookOpen, FlaskConical, LayoutDashboard
@@ -704,6 +705,8 @@ const App: React.FC = () => {
   const [currentStep, setCurrentStep]     = useState<string | null>(null);
   const [activeTab, setActiveTab]         = useState<ActiveTab>('chat');
   const [sidebarOpen, setSidebarOpen]     = useState(false);
+  const [showPlan, setShowPlan]           = useState(true);
+  const [browserMode, setBrowserMode]     = useState<'normal'|'expanded'|'hidden'>('normal');
   const [isAgentBusy, setIsAgentBusy]     = useState(false);
   const [pendingInputRequest, setPendingInputRequest] = useState<InputRequest | null>(null);
   const [currentPlan, setCurrentPlan]     = useState<TaskPlan | null>(null);
@@ -985,14 +988,63 @@ const App: React.FC = () => {
               </span>
             )}
           </div>
+          {/* Panel control buttons */}
+          <div className="hidden lg:flex items-center gap-1 mr-1">
+            {/* Toggle plan/agents panel */}
+            <button
+              onClick={() => setShowPlan(p => !p)}
+              title={showPlan ? 'إخفاء لوحة الوكلاء' : 'إظهار لوحة الوكلاء'}
+              className={`p-2 rounded-lg transition-all text-xs flex items-center gap-1.5 ${
+                showPlan
+                  ? 'text-violet-400 bg-violet-500/15 hover:bg-violet-500/25'
+                  : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              {showPlan ? <PanelLeftClose size={15}/> : <PanelLeftOpen size={15}/>}
+              <span className="text-[11px] font-medium">{showPlan ? 'أخفِ الوكلاء' : 'أظهر الوكلاء'}</span>
+            </button>
+
+            <div className="w-px h-5 bg-slate-800 mx-0.5"/>
+
+            {/* Expand browser */}
+            <button
+              onClick={() => setBrowserMode(m => m === 'expanded' ? 'normal' : 'expanded')}
+              title={browserMode === 'expanded' ? 'استعادة حجم المتصفح' : 'توسيع المتصفح'}
+              className={`p-2 rounded-lg transition-all text-xs flex items-center gap-1.5 ${
+                browserMode === 'expanded'
+                  ? 'text-blue-400 bg-blue-500/15 hover:bg-blue-500/25'
+                  : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              {browserMode === 'expanded' ? <Minimize2 size={15}/> : <Maximize2 size={15}/>}
+              <span className="text-[11px] font-medium">{browserMode === 'expanded' ? 'استعادة' : 'توسيع المتصفح'}</span>
+            </button>
+
+            {/* Show/hide browser */}
+            <button
+              onClick={() => setBrowserMode(m => m === 'hidden' ? 'normal' : 'hidden')}
+              title={browserMode === 'hidden' ? 'إظهار المتصفح' : 'إخفاء المتصفح'}
+              className={`p-2 rounded-lg transition-all text-xs flex items-center gap-1.5 ${
+                browserMode === 'hidden'
+                  ? 'text-slate-400 bg-slate-700 hover:bg-slate-600'
+                  : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              {browserMode === 'hidden' ? <Eye size={15}/> : <EyeOff size={15}/>}
+              <span className="text-[11px] font-medium">{browserMode === 'hidden' ? 'إظهار المتصفح' : 'إخفاء المتصفح'}</span>
+            </button>
+          </div>
+
           <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500'}`}/>
         </header>
 
         {/* Desktop layout: 3 columns */}
         <div className="flex-1 flex min-h-0">
           <div className="hidden lg:flex flex-1 min-h-0">
-            {/* Chat column */}
-            <div className="w-[36%] border-r border-slate-800/50 flex flex-col min-h-0">
+            {/* Chat column — always visible, width adapts */}
+            <div className={`border-r border-slate-800/50 flex flex-col min-h-0 transition-all duration-300 ${
+              browserMode === 'expanded' ? 'w-0 overflow-hidden border-0' : (showPlan ? 'w-[36%]' : 'w-[50%]')
+            }`}>
               <ChatPanel
                 messages={messages} tasks={tasks} isConnected={isConnected}
                 isAgentBusy={isAgentBusy} currentStep={currentStep}
@@ -1001,28 +1053,32 @@ const App: React.FC = () => {
                 pendingInputRequest={pendingInputRequest} onUserAnswer={handleUserAnswer}
               />
             </div>
-            {/* Plan column */}
-            <div className="w-[28%] border-r border-slate-800/50 flex flex-col min-h-0 overflow-hidden">
-              <div className="px-4 py-3 border-b border-slate-800/50 flex items-center gap-2 flex-shrink-0">
-                <ListChecks size={14} className="text-violet-400"/>
-                <span className="text-xs font-semibold text-slate-300">خطة التنفيذ</span>
-                {currentPlan && (
-                  <span className="ml-auto text-[10px] text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded-full border border-violet-500/20">
-                    {currentPlan.steps.length} خطوات
-                  </span>
-                )}
+            {/* Plan column — toggled by showPlan */}
+            {showPlan && browserMode !== 'expanded' && (
+              <div className="w-[28%] border-r border-slate-800/50 flex flex-col min-h-0 overflow-hidden transition-all duration-300">
+                <div className="px-4 py-3 border-b border-slate-800/50 flex items-center gap-2 flex-shrink-0">
+                  <ListChecks size={14} className="text-violet-400"/>
+                  <span className="text-xs font-semibold text-slate-300">خطة التنفيذ</span>
+                  {currentPlan && (
+                    <span className="ml-auto text-[10px] text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded-full border border-violet-500/20">
+                      {currentPlan.steps.length} خطوات
+                    </span>
+                  )}
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                  <PlanPanel plan={currentPlan} agentActivity={agentActivity} isAgentBusy={isAgentBusy}/>
+                </div>
               </div>
-              <div className="flex-1 overflow-y-auto">
-                <PlanPanel plan={currentPlan} agentActivity={agentActivity} isAgentBusy={isAgentBusy}/>
+            )}
+            {/* Browser column — controlled by browserMode */}
+            {browserMode !== 'hidden' && (
+              <div className="flex-1 flex flex-col min-h-0 transition-all duration-300">
+                <BrowserPanel
+                  frameSrc={browserFrameSrc} browserHasFrame={browserHasFrame}
+                  isAgentBusy={isAgentBusy} onEmit={emitBrowser}
+                />
               </div>
-            </div>
-            {/* Browser column */}
-            <div className="flex-1 flex flex-col min-h-0">
-              <BrowserPanel
-                frameSrc={browserFrameSrc} browserHasFrame={browserHasFrame}
-                isAgentBusy={isAgentBusy} onEmit={emitBrowser}
-              />
-            </div>
+            )}
           </div>
 
           {/* Mobile/Tablet: tabs */}

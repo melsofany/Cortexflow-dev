@@ -255,12 +255,13 @@ const ChatPanel = memo(({
 
 // ─── BrowserPanel (stable component outside App) ──────────────────────────────
 interface BrowserPanelProps {
-  browserImgRef: React.RefObject<HTMLImageElement | null>;
+  frameSrc: string | null;
   browserHasFrame: boolean;
   isAgentBusy: boolean;
   onEmit: (type: string, params: any) => void;
 }
-const BrowserPanel = memo(({ browserImgRef, browserHasFrame, isAgentBusy, onEmit }: BrowserPanelProps) => {
+const BrowserPanel = memo(({ frameSrc, browserHasFrame, isAgentBusy, onEmit }: BrowserPanelProps) => {
+  const browserImgRef = useRef<HTMLImageElement>(null);
   const [showKeyboard, setShowKeyboard] = useState(false);
   const [keyboardText, setKeyboardText] = useState('');
   const [urlBarValue, setUrlBarValue]   = useState('');
@@ -462,12 +463,13 @@ const BrowserPanel = memo(({ browserImgRef, browserHasFrame, isAgentBusy, onEmit
           </div>
         )}
 
-        {/* img always in DOM for direct .src updates */}
+        {/* img always in DOM — src driven by state */}
         <img
           ref={browserImgRef}
           alt="Browser View"
           draggable={false}
           className="w-full h-full object-contain pointer-events-none"
+          src={frameSrc ? `data:image/jpeg;base64,${frameSrc}` : undefined}
           style={{ display: browserHasFrame ? 'block' : 'none' }}
         />
 
@@ -496,13 +498,13 @@ const App: React.FC = () => {
   const [isConnected, setIsConnected]     = useState(false);
   const [tasks, setTasks]                 = useState<Task[]>([]);
   const [browserHasFrame, setBrowserHasFrame] = useState(false);
+  const [browserFrameSrc, setBrowserFrameSrc] = useState<string | null>(null);
   const [currentStep, setCurrentStep]     = useState<string | null>(null);
   const [activeTab, setActiveTab]         = useState<ActiveTab>('chat');
   const [sidebarOpen, setSidebarOpen]     = useState(false);
   const [isAgentBusy, setIsAgentBusy]     = useState(false);
 
-  const socketRef     = useRef<Socket | null>(null);
-  const browserImgRef = useRef<HTMLImageElement>(null);
+  const socketRef = useRef<Socket | null>(null);
 
   // Stable emit callback — never changes reference
   const emitBrowser = useCallback((type: string, params: any) => {
@@ -595,9 +597,9 @@ const App: React.FC = () => {
     });
 
     socket.on('browserStream', (d: { image: string }) => {
-      if (d.image && browserImgRef.current) {
-        browserImgRef.current.src = `data:image/jpeg;base64,${d.image}`;
-        setBrowserHasFrame(prev => prev || true);
+      if (d.image) {
+        setBrowserFrameSrc(d.image);
+        setBrowserHasFrame(true);
       }
     });
 
@@ -706,7 +708,7 @@ const App: React.FC = () => {
             </div>
             <div className="flex-1 flex flex-col min-h-0">
               <BrowserPanel
-                browserImgRef={browserImgRef} browserHasFrame={browserHasFrame}
+                frameSrc={browserFrameSrc} browserHasFrame={browserHasFrame}
                 isAgentBusy={isAgentBusy} onEmit={emitBrowser}
               />
             </div>
@@ -723,7 +725,7 @@ const App: React.FC = () => {
                     onSubmit={handleSubmit} onStop={handleStop} onResume={handleResume}
                   />
                 : <BrowserPanel
-                    browserImgRef={browserImgRef} browserHasFrame={browserHasFrame}
+                    frameSrc={browserFrameSrc} browserHasFrame={browserHasFrame}
                     isAgentBusy={isAgentBusy} onEmit={emitBrowser}
                   />
               }

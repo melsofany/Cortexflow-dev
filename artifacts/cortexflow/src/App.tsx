@@ -781,7 +781,12 @@ const App: React.FC = () => {
     // في الإنتاج على Render، VITE_API_URL يحمل عنوان cortexflow-api الكامل
     // في التطوير، نستخدم مسار نسبي يمر عبر الـ proxy
     const apiBase = (import.meta.env.VITE_API_URL as string) || '';
-    const socket = io(apiBase, { path: '/api/socket', transports: ['websocket'] });
+    const socket = io(apiBase || '/', {
+      path: '/api/socket',
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
+    });
     socketRef.current = socket;
 
     socket.on('connect', () => { setIsConnected(true); addSystem('متصل بالخادم بنجاح', 'success'); socket.emit('getStatus'); });

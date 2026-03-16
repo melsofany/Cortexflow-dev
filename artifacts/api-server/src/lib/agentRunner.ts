@@ -9,6 +9,15 @@ import { memorySystem } from "./memory.js";
 import { multiAgentOrchestrator } from "./multiAgent.js";
 import { learningEngine } from "./learningEngine.js";
 import { techIntelligence } from "./techIntelligence.js";
+import {
+  analyzeTaskComplexity,
+  buildKnowledgeAudit,
+  buildRealityChecklist,
+  buildPreResearchPrompt,
+  buildDoneVerificationPrompt,
+  detectFabricatedUrl,
+  ErrorPatternTracker,
+} from "./preTaskResearcher.js";
 
 const MAX_ITERATIONS = 50;
 const MAX_RETRIES    = 2;
@@ -140,11 +149,19 @@ ACTION: <الإجراء> | PARAM: <القيمة>
 - بعد حصولك على البيانات تابع التنفيذ فوراً
 
 ━━━ قاعدة done — مهم جداً ━━━
-- done يعني أن المهمة اكتملت بالكامل — كل الخطوات، كل المعايير
+- done يعني أن الدليل الملموس مرئي الآن على الشاشة — ليس مجرد إتمام الخطوات
 - لا تستخدم done لأنك وصلت للصفحة الرئيسية للموقع
 - لا تستخدم done لأنك تسجّلت دخول فقط — الدخول وسيلة وليس هدفاً
-- استخدم done فقط عندما تتحقق أن كل ما طُلب في المهمة تحقق فعلاً
-- إذا شككت → اسأل نفسك: "هل المهمة الأصلية اكتملت 100%؟" إذا لا → تابع
+- قبل done: اقرأ هيكل الصفحة الحالي وتأكد أن الدليل المطلوب مرئي فيه فعلاً
+- إذا شككت → اسأل نفسك: "هل أرى الدليل الملموس على الشاشة الآن؟" إذا لا → تابع
+
+━━━ قواعد مكافحة الهلوسة — مهم جداً ━━━
+- لا تنتقل إلى رابط يحتوي على IDs أو أرقام لم تظهر في هيكل الصفحة الحالية
+- إذا فشل نفس الإجراء 3 مرات → استخدم ask لإبلاغ المستخدم بدلاً من المحاولة مجدداً
+- لا تخترع بيانات (App IDs، أرقام مرجعية، access tokens) — اقرأها من الصفحة فقط
+- إذا رأيت خطأ تكرر → لا تحاول تجاوزه بنفس الطريقة، بل اطلب توضيحاً من المستخدم
+- كل معلومة تستخدمها يجب أن تأتي من: هيكل الصفحة الحالي، أو إدخال المستخدم
+- الاستنتاج المبني على ما تراه أفضل بكثير من الافتراض المبني على الذاكرة
 
 ━━━ قاعدة الصفحات بدون حقول إدخال ━━━
 - إذا ظهر "لا توجد حقول إدخال" → الصفحة صفحة تنقل أو محتوى
@@ -563,6 +580,54 @@ class AgentRunner extends EventEmitter {
     this.emitStep(taskId, "OBSERVE", `تحليل مهمة التصفح: "${task.description}"`);
     await sleep(300);
 
+    // ══════════════════════════════════════════════════════════════════════
+    // ── مرحلة ما قبل التنفيذ: تحليل التعقيد والبحث المسبق ──────────────
+    // ══════════════════════════════════════════════════════════════════════
+    const complexity   = analyzeTaskComplexity(task.description);
+    const audit        = buildKnowledgeAudit(task.description, complexity);
+    const realityList  = buildRealityChecklist(task.description);
+    const errorTracker = new ErrorPatternTracker();
+
+    // عرض تقرير التعقيد للمستخدم
+    this.emitStep(taskId, "THINK", [
+      `## 🔬 تحليل تعقيد المهمة`,
+      `درجة التعقيد: **${complexity.score}/10** (${complexity.category})`,
+      complexity.reasons.length ? `أسباب: ${complexity.reasons.join(" | ")}` : "",
+      ``,
+      audit.prerequisites.length ? `## ✅ متطلبات يجب توافرها قبل البدء\n${audit.prerequisites.map(p => `- ${p}`).join("\n")}` : "",
+      audit.knownFailurePoints.length ? `## ⚠️ نقاط فشل معروفة لهذا النوع\n${audit.knownFailurePoints.map(f => `- ${f}`).join("\n")}` : "",
+      ``,
+      `## 🎯 دليل الاكتمال (ما يجب أن أراه على الشاشة)\n${realityList.items.map(i => `- **${i.criterion}**: ${i.mustBeVisible}`).join("\n")}`,
+    ].filter(Boolean).join("\n"));
+    await sleep(200);
+
+    // للمهام المعقدة جداً: تقرير بحث مسبق من DeepSeek
+    if (complexity.isComplex && getDeepSeekKey()) {
+      this.emitStep(taskId, "THINK", `🧪 البحث المسبق — DeepSeek يحلل متطلبات المنصة...`);
+      try {
+        const prePrompt = buildPreResearchPrompt(task.description, complexity, audit, realityList);
+        const preResp = await deepseekChat([
+          { role: "system", content: "أنت خبير في أتمتة المواقع الإلكترونية وتعرف متطلبات المنصات الكبرى." },
+          { role: "user", content: prePrompt },
+        ], 1500, 0.2);
+
+        const preJson = preResp.match(/\{[\s\S]*\}/);
+        if (preJson) {
+          const pre = JSON.parse(preJson[0]);
+          const parts: string[] = ["## 📋 تقرير البحث المسبق (قبل البدء)"];
+          if (pre.warningToUser) parts.push(`\n⚠️ **تحذير مهم:** ${pre.warningToUser}`);
+          if (pre.preChecks?.length) parts.push(`\n### ما يجب التحقق منه قبل البدء\n${pre.preChecks.map((c: string) => `- ${c}`).join("\n")}`);
+          if (pre.cannotBeAutomated?.length) parts.push(`\n### ❌ لا يمكن أتمتته (يحتاج تدخل يدوي)\n${pre.cannotBeAutomated.map((c: string) => `- ${c}`).join("\n")}`);
+          if (pre.realSteps?.length) parts.push(`\n### خطوات التنفيذ الواقعية\n${pre.realSteps.map((s: string, i: number) => `${i+1}. ${s}`).join("\n")}`);
+          if (pre.completionProof?.length) parts.push(`\n### الدليل الملموس على الاكتمال\n${pre.completionProof.map((c: string) => `- ${c}`).join("\n")}`);
+          this.emitStep(taskId, "THINK", parts.join("\n"));
+        }
+      } catch (e: any) {
+        console.log(`[PreResearch] فشل: ${e.message}`);
+      }
+    }
+    // ══════════════════════════════════════════════════════════════════════
+
     const ready = await browserAgent.initialize();
     if (!ready) {
       this.emitStep(taskId, "OBSERVE", "تعذّر تشغيل المتصفح — التبديل إلى وضع النص");
@@ -865,46 +930,42 @@ class AgentRunner extends EventEmitter {
             continue;
           }
 
-          // ثانياً: تحقق حقيقي عبر DeepSeek — هل اكتملت المهمة فعلاً؟
-          this.emitStep(taskId, "THINK", `🔍 DeepSeek يتحقق من اكتمال المهمة...`);
+          // ثانياً: تحقق حقيقي مُعزَّز — القائمة الواقعية + DeepSeek
+          this.emitStep(taskId, "THINK", `🔍 التحقق المُعزَّز من اكتمال المهمة بناءً على الدليل المرئي...`);
           try {
-            const verifyPrompt = [
-              `المهمة الأصلية: "${task.description}"`,
-              ``,
-              completionCriteria.length > 0
-                ? `معايير الاكتمال المطلوبة:\n${completionCriteria.map(c => `- ${c}`).join("\n")}`
-                : ``,
-              ``,
-              `الحالة الحالية:`,
-              `URL: ${currentUrl}`,
-              `محتوى الصفحة (أول 800 حرف): ${pageContent.substring(0, 800)}`,
-              ``,
-              `السؤال: هل اكتملت المهمة الأصلية بالكامل بناءً على الحالة الحالية؟`,
-              `أجب بـ JSON فقط: { "completed": true/false, "reason": "سبب واضح", "nextStep": "الخطوة التالية إذا لم تكتمل" }`,
-            ].join("\n");
+            // استخدم بناء التحقق المُعزَّز مع القائمة الواقعية
+            const enhancedVerifyPrompt = buildDoneVerificationPrompt(
+              task.description,
+              realityList,
+              currentUrl,
+              pageContent,
+            );
 
             const verifyResp = await deepseekChat([
-              { role: "system", content: `أنت محكّم دقيق تتحقق من اكتمال المهام. لا تقبل الاكتمال إلا إذا تحققت المعايير فعلاً.` },
-              { role: "user", content: verifyPrompt },
-            ], 600, 0.1);
+              { role: "system", content: `أنت محكّم صارم للتحقق من المهام. لا تقبل الاكتمال إلا بدليل مرئي واضح في النص المُعطى.` },
+              { role: "user", content: enhancedVerifyPrompt },
+            ], 800, 0.1);
 
             const vJson = verifyResp.match(/\{[\s\S]*\}/);
             if (vJson) {
               const v = JSON.parse(vJson[0]);
               if (v.completed === true) {
-                this.emitStep(taskId, "THINK", `✅ DeepSeek أكد اكتمال المهمة: ${v.reason}`);
-                finalResult = param || v.reason || "اكتملت المهمة بنجاح";
+                this.emitStep(taskId, "THINK", `✅ تم التحقق بالدليل المرئي: ${v.evidence}`);
+                finalResult = param || v.evidence || "اكتملت المهمة بنجاح";
                 break;
               } else {
-                this.emitStep(taskId, "WARN", `⚠️ DeepSeek: المهمة لم تكتمل بعد — ${v.reason}`);
+                const missing = v.missingItems?.length ? `\nما لم يتحقق بعد:\n${(v.missingItems as string[]).map((m: string) => `  - ${m}`).join("\n")}` : "";
+                this.emitStep(taskId, "WARN", `⚠️ المهمة لم تكتمل — الدليل غير مرئي على الشاشة: ${v.evidence}${missing}`);
                 history.push({
                   role: "user",
                   content: [
-                    `تحذير من التحقق: طلبت done لكن المهمة لم تكتمل بعد.`,
-                    `السبب: ${v.reason}`,
-                    v.nextStep ? `الخطوة التالية المطلوبة: ${v.nextStep}` : ``,
-                    `URL الحالي: ${currentUrl}`,
-                    `تابع العمل حتى تكتمل المهمة فعلاً.`,
+                    `⛔ رُفض done: المهمة لم تكتمل بناءً على ما يُرى على الشاشة الآن.`,
+                    `الدليل المطلوب غير موجود: ${v.evidence}`,
+                    v.missingItems?.length ? `العناصر المفقودة:\n${(v.missingItems as string[]).map((m: string) => `- ${m}`).join("\n")}` : ``,
+                    v.nextAction ? `الخطوة التالية: ${v.nextAction}` : ``,
+                    ``,
+                    `تذكير: done يعني أن الدليل الملموس مرئي الآن على الشاشة، ليس مجرد إتمام الخطوات.`,
+                    `تابع العمل حتى يظهر الدليل على الشاشة.`,
                   ].filter(Boolean).join("\n"),
                 });
                 continue;
@@ -950,6 +1011,29 @@ class AgentRunner extends EventEmitter {
           } catch { }
         }
 
+        // ── كشف الروابط المخترعة من الذاكرة (لم تُرَ على الشاشة) ────────
+        if (action === "navigate") {
+          const currentPageContent = await browserAgent.getPageContent();
+          const currentPageStruct  = await browserAgent.getPageStructure();
+          if (detectFabricatedUrl(effectiveParam, currentPageContent, currentPageStruct)) {
+            this.emitStep(taskId, "WARN", [
+              `🚨 **كشف رابط مخترع**: الرابط "${effectiveParam}" يحتوي على معرّفات (IDs) غير مرئية في الصفحة الحالية.`,
+              `هذا يعني أن الوكيل يبني الرابط من ذاكرته وليس مما يراه على الشاشة.`,
+              `القاعدة: لا تنتقل إلى رابط لم تره مكتوباً في الصفحة أو لم تُنشئه الصفحة بنفسها.`,
+            ].join("\n"));
+            history.push({
+              role: "user",
+              content: [
+                `⛔ محاولة الانتقال إلى "${effectiveParam}" مرفوضة.`,
+                `هذا الرابط يحتوي على معرّفات لم تظهر في الصفحة الحالية — قد يكون مخترعاً من الذاكرة.`,
+                `القاعدة الصارمة: انتقل فقط إلى روابط مرئية على الصفحة الحالية أو روابط جاءت من النقر على أزرار/روابط حقيقية.`,
+                `بدلاً من ذلك: ابحث عن الزر أو الرابط الصحيح في هيكل الصفحة وانقر عليه.`,
+              ].join("\n"),
+            });
+            continue;
+          }
+        }
+
         try {
           const actionResult = await executeAction(effectiveAction, effectiveParam);
           // لقطة فورية بعد كل إجراء للمزامنة مع التفكير
@@ -990,8 +1074,25 @@ class AgentRunner extends EventEmitter {
         const pageErrors = await browserAgent.detectErrors();
         if (pageErrors.length > 0) {
           const errText = pageErrors.join(" | ");
+          const errorPattern = errorTracker.record(errText);
           this.emitStep(taskId, "ERR", `⚠️ ${errText}`);
-          history.push({ role: "user", content: `أخطاء ظاهرة في الصفحة: ${errText}\nحلّل هذا الخطأ وصحّحه أو اطلب من المستخدم بيانات صحيحة باستخدام ask.` });
+
+          // إذا تكرر الخطأ أكثر من الحد المسموح → وقف وتصعيد للمستخدم
+          if (errorTracker.isRepeating(errText)) {
+            const escalationMsg = errorTracker.getEscalationMessage(errText);
+            this.emitStep(taskId, "WARN", escalationMsg);
+            this.emitStep(taskId, "ASK", `⛔ خطأ متكرر يمنع المتابعة:\n"${errText.substring(0, 150)}"\n\nالتصنيف: ${errorPattern.category}\nيرجى مراجعة الموقع مباشرة أو تزويد بيانات إضافية للمتابعة.`);
+            const userAnswer = await this.waitForUserInput(taskId, `خطأ متكرر: "${errText.substring(0, 100)}" — كيف تريد المتابعة؟`);
+            if (userAnswer.trim()) {
+              history.push({ role: "user", content: `المستخدم يقول: ${userAnswer}\nتابع بناءً على هذه المعلومات.` });
+            } else {
+              // وقف المهمة إذا لم يرد المستخدم
+              this.emitStep(taskId, "WARN", `⏱ لم يرد المستخدم — إيقاف المهمة. الخطأ المتكرر منع الاكتمال.`);
+              break;
+            }
+          } else {
+            history.push({ role: "user", content: `أخطاء ظاهرة في الصفحة (المرة ${errorPattern.count}): ${errText}\nالإجراء المقترح: ${errorPattern.suggestedAction}\nحلّل هذا الخطأ وصحّحه أو اطلب من المستخدم بيانات صحيحة باستخدام ask.` });
+          }
         }
 
         await sleep(200);

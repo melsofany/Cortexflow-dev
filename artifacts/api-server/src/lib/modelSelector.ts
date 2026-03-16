@@ -1,6 +1,8 @@
 import axios from "axios";
 import { classifyWithDeepSeek } from "./deepseekClassifier.js";
 
+const getDeepSeekKey = () => process.env.DEEPSEEK_API_KEY || "";
+
 export type TaskCategory =
   | "browser"     // تصفح الويب، نماذج، تسجيل
   | "code"        // برمجة، كود، سكريبت
@@ -263,7 +265,10 @@ export async function selectBestModel(
   }
 
   if (availableModels.length === 0) {
-    return { model: "qwen2:0.5b", category, reason: "لا يوجد نماذج مثبتة — تحقق من Ollama" };
+    if (getDeepSeekKey()) {
+      return { model: "deepseek-chat", category, classifier: "deepseek", reason: "DeepSeek API نشط — نموذج سحابي متقدم" };
+    }
+    return { model: "none", category, reason: "⚠️ لا يوجد نموذج متاح — أضف DEEPSEEK_API_KEY أو ثبّت نموذج Ollama" };
   }
 
   const installedProfiles = MODEL_PROFILES.filter(p => availableModels!.includes(p.name));

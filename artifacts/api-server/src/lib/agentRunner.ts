@@ -893,21 +893,40 @@ class AgentRunner extends EventEmitter {
   // ── وضع المحاكاة (بدون نماذج) ─────────────────────────────────────────
 
   private async simulateWithSteps(task: Task, start: number): Promise<void> {
-    const content: Record<string, string> = {
-      OBSERVE: `تحليل المهمة: "${task.description}".`,
-      THINK:   `تحديد أفضل نهج للتنفيذ.`,
-      PLAN:    `الخطة:\n1. تهيئة الأدوات\n2. تنفيذ الإجراءات\n3. التحقق`,
-      ACT:     `⚠️ لا توجد نماذج مثبتة بعد. يتم تنزيل النماذج في الخلفية...\nاستخدم قسم "النماذج" لتتبع التنزيل.`,
-      VERIFY:  `سيتوفر التنفيذ الكامل فور اكتمال تنزيل النماذج.`,
-    };
-    for (const step of ["OBSERVE", "THINK", "PLAN", "ACT", "VERIFY"]) {
-      await sleep(500);
-      this.emitStep(task.taskId, step, content[step]);
+    const taskId = task.taskId;
+
+    // إذا كان DeepSeek متاحاً، استخدمه فعلياً
+    if (getDeepSeekKey()) {
+      await this.runWithPlannerAndAgents(task, start, "deepseek-chat", "default");
+      return;
     }
-    const result = content["VERIFY"];
-    taskStore.updateTask(task.taskId, { status: "completed", result });
-    taskStore.addLog({ taskId: task.taskId, agentType: "AgentRunner", action: "task_complete", output: result, durationMs: Date.now() - start });
-    this.emit("taskSuccess", { taskId: task.taskId, result });
+
+    // لا يوجد أي نموذج — إظهار رسالة واضحة للمستخدم
+    this.emitStep(taskId, "OBSERVE", `تحليل المهمة: "${task.description}"`);
+    await sleep(400);
+    this.emitStep(taskId, "THINK", "فحص الموارد المتاحة...");
+    await sleep(400);
+
+    const result = `⚠️ **لا يوجد نموذج ذكاء اصطناعي متاح حالياً**
+
+لتفعيل CortexFlow، اختر أحد الخيارين:
+
+**الخيار 1 — DeepSeek API (موصى به):**
+- اذهب إلى الإعدادات ⚙️
+- أضف مفتاح DeepSeek API Key
+- احصل على مفتاح مجاني من: https://platform.deepseek.com
+
+**الخيار 2 — Ollama (محلي):**
+- تأكد من تشغيل Ollama
+- نزّل نموذجاً: \`ollama pull qwen2:0.5b\``;
+
+    this.emitStep(taskId, "ACT", result);
+    await sleep(300);
+    this.emitStep(taskId, "VERIFY", "جاهز للعمل فور إضافة نموذج.");
+
+    taskStore.updateTask(taskId, { status: "completed", result });
+    taskStore.addLog({ taskId, agentType: "AgentRunner", action: "task_complete", output: result, durationMs: Date.now() - start });
+    this.emit("taskSuccess", { taskId, result });
   }
 }
 

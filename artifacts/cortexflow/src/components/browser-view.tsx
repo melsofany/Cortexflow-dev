@@ -24,33 +24,15 @@ export function BrowserView() {
 
   const lastMoveRef = useRef<number>(0);
 
-  const getScale = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { sx: 1, sy: 1, offsetX: 0, offsetY: 0 };
-    const dW = canvas.offsetWidth;
-    const dH = canvas.offsetHeight;
-    // object-contain: scale uniformly so content fits inside the box
-    const scale = Math.min(dW / BROWSER_W, dH / BROWSER_H);
-    const renderedW = BROWSER_W * scale;
-    const renderedH = BROWSER_H * scale;
-    return {
-      sx: BROWSER_W / renderedW,
-      sy: BROWSER_H / renderedH,
-      offsetX: (dW - renderedW) / 2,
-      offsetY: (dH - renderedH) / 2,
-    };
-  }, []);
-
   const toBrowserCoords = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    const { sx, sy, offsetX, offsetY } = getScale();
     return {
-      x: Math.round(Math.max(0, Math.min(BROWSER_W - 1, (e.clientX - rect.left - offsetX) * sx))),
-      y: Math.round(Math.max(0, Math.min(BROWSER_H - 1, (e.clientY - rect.top  - offsetY) * sy))),
+      x: Math.round(Math.max(0, Math.min(BROWSER_W - 1, ((e.clientX - rect.left) / rect.width)  * BROWSER_W))),
+      y: Math.round(Math.max(0, Math.min(BROWSER_H - 1, ((e.clientY - rect.top)  / rect.height) * BROWSER_H))),
     };
-  }, [getScale]);
+  }, []);
 
   useEffect(() => {
     if (!socket) return;
@@ -254,11 +236,14 @@ export function BrowserView() {
             ref={canvasRef}
             width={BROWSER_W}
             height={BROWSER_H}
-            className="w-full h-full object-contain"
             style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
               cursor: isInteractive ? 'crosshair' : 'default',
               userSelect: 'none',
-              WebkitUserSelect: 'none',
+              WebkitUserSelect: 'none' as any,
             }}
             onMouseMove={handleMouseMove}
             onMouseDown={handleMouseDown}

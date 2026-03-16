@@ -1,0 +1,46 @@
+{
+  "snapshots": [
+    {
+      "timestamp": "2026-03-16T08:03:48.490Z",
+      "metrics": [
+        {
+          "name": "deepseek_latency_ms",
+          "value": 1924,
+          "unit": "ms",
+          "timestamp": "2026-03-16T08:03:48.476Z",
+          "status": "healthy"
+        },
+        {
+          "name": "ollama_status",
+          "value": 1,
+          "unit": "bool",
+          "timestamp": "2026-03-16T08:03:48.479Z",
+          "status": "healthy"
+        },
+        {
+          "name": "agent_service_status",
+          "value": 1,
+          "unit": "bool",
+          "timestamp": "2026-03-16T08:03:48.490Z",
+          "status": "healthy"
+        }
+      ],
+      "issues": [],
+      "score": 100
+    }
+  ],
+  "taskStats": {
+    "total": 0,
+    "success": 0,
+    "failed": 0,
+    "avgDurationMs": 0
+  },
+  "apiHealth": {
+    "deepseek": true,
+    "ollama": true,
+    "browser": false,
+    "agentService": true
+  },
+  "lastCheck": "2026-03-16T08:03:48.490Z",
+  "alerts": []
+}

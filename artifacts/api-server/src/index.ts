@@ -3,6 +3,7 @@ import { Server as SocketServer } from "socket.io";
 import app, { ollamaClient, agentRunner } from "./app.js";
 import { taskStore, ConversationMessage } from "./lib/taskStore.js";
 import { browserAgent } from "./lib/browserAgent.js";
+import { techIntelligence } from "./lib/techIntelligence.js";
 
 const rawPort = process.env["PORT"] ?? "8080";
 
@@ -312,9 +313,13 @@ async function startServer() {
     .then((ok) => console.log(`[Server] Browser: ${ok ? "✓ Chromium ready" : "✗ not available"}`))
     .catch(() => console.warn("[Server] Browser init warning"));
 
+  // ── Tech Intelligence: بحث، تطوير ذاتي، مراقبة ────────────────────────
+  techIntelligence.startBackgroundJobs();
+
   httpServer.listen(port, () => {
     console.log(`[Server] CortexFlow running on port ${port}`);
     console.log(`[Server] Ollama: ${ollamaClient.isAvailable() ? "✓ " + ollamaClient.getCurrentModel() : "✗ not available (simulation mode)"}`);
+    console.log(`[Server] Tech Intelligence: ✓ بحث + تطوير ذاتي + مراقبة`);
   });
 }
 

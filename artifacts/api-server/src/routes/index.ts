@@ -6,6 +6,7 @@ import logsRouter from "./logs.js";
 import providersRouter from "./providers.js";
 import settingsRouter from "./settings.js";
 import learningRouter from "./learning.js";
+import techRouter from "./tech.js";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(logsRouter);
 router.use(providersRouter);
 router.use(settingsRouter);
 router.use(learningRouter);
+router.use(techRouter);
 
 export default router;

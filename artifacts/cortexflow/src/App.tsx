@@ -51,8 +51,14 @@ interface AgentActivity {
   timestamp: Date;
 }
 
-type ActiveTab = 'chat' | 'browser' | 'plan';
+type ActiveTab = 'chat' | 'browser' | 'plan' | 'tech';
 interface InputRequest { taskId: string; question: string; }
+
+interface TechEntry { topic: string; summary: string; keyItems: string[]; relevance: string; updatedAt: string; }
+interface TechKnowledge { entries: TechEntry[]; lastResearch: string; researchCount: number; }
+interface CodeImprovement { id: string; file: string; category: string; title: string; description: string; priority: string; reason: string; currentCode: string; suggestedCode: string; status: string; }
+interface PerfSnapshot { score: number; metrics: Array<{ name: string; value: number; unit: string; status: string }>; issues: string[]; timestamp: string; }
+interface PerfData { snapshots: PerfSnapshot[]; taskStats: { total: number; success: number; failed: number; avgDurationMs: number }; apiHealth: { deepseek: boolean; ollama: boolean; browser: boolean; agentService: boolean }; alerts: Array<{ level: string; message: string; timestamp: string }> }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const STEP_META: Record<string, { icon: any; color: string; label: string }> = {
@@ -193,6 +199,258 @@ const InputRequestBanner = memo(({ req, onAnswer }: { req: InputRequest; onAnswe
           className="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-white text-xs font-bold transition-colors">
           إرسال
         </button>
+      </div>
+    </div>
+  );
+});
+
+// ─── TechPanel ────────────────────────────────────────────────────────────────
+const TechPanel = memo(({ apiBase }: { apiBase: string }) => {
+  const [knowledge, setKnowledge]       = useState<TechKnowledge | null>(null);
+  const [improvements, setImprovements] = useState<CodeImprovement[]>([]);
+  const [perf, setPerf]                 = useState<PerfData | null>(null);
+  const [report, setReport]             = useState('');
+  const [loading, setLoading]           = useState(false);
+  const [researchLoading, setResearchLoading] = useState(false);
+  const [activeSection, setActiveSection] = useState<'perf'|'tech'|'code'>('perf');
+
+  const API = `${apiBase}/api`;
+
+  const load = useCallback(async () => {
+    try {
+      const [k, imp, p] = await Promise.all([
+        fetch(`${API}/tech/knowledge`).then(r => r.json()),
+        fetch(`${API}/tech/improvements/pending`).then(r => r.json()),
+        fetch(`${API}/tech/performance`).then(r => r.json()),
+      ]);
+      setKnowledge(k);
+      setImprovements(Array.isArray(imp) ? imp : []);
+      setPerf(p);
+    } catch {}
+  }, [API]);
+
+  const triggerResearch = async () => {
+    setResearchLoading(true);
+    await fetch(`${API}/tech/research`, { method: 'POST' });
+    setTimeout(() => { load(); setResearchLoading(false); }, 5000);
+  };
+
+  const applyImprovement = async (id: string) => {
+    await fetch(`${API}/tech/improvements/${id}/apply`, { method: 'POST' });
+    setImprovements(prev => prev.filter(i => i.id !== id));
+  };
+
+  const rejectImprovement = async (id: string) => {
+    await fetch(`${API}/tech/improvements/${id}/reject`, { method: 'POST' });
+    setImprovements(prev => prev.filter(i => i.id !== id));
+  };
+
+  const loadReport = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${API}/tech/report`).then(x => x.json());
+      setReport(r.report || '');
+    } catch { setReport('فشل تحميل التقرير'); }
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, [load]);
+
+  const latestSnap = perf?.snapshots?.[0];
+  const scoreColor = (s: number) => s >= 80 ? 'text-emerald-400' : s >= 50 ? 'text-yellow-400' : 'text-red-400';
+  const priColor = (p: string) => p === 'critical' ? 'text-red-400 bg-red-500/10 border-red-500/20' : p === 'high' ? 'text-orange-400 bg-orange-500/10 border-orange-500/20' : p === 'medium' ? 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20' : 'text-slate-400 bg-slate-500/10 border-slate-500/20';
+  const relColor = (r: string) => r === 'critical' ? 'bg-red-500/20 text-red-300' : r === 'high' ? 'bg-orange-500/20 text-orange-300' : r === 'medium' ? 'bg-yellow-500/20 text-yellow-300' : 'bg-slate-700/50 text-slate-400';
+
+  return (
+    <div className="h-full flex flex-col bg-[#0b0b12]">
+      {/* Header */}
+      <div className="flex-shrink-0 px-4 py-3 border-b border-slate-800/50 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <FlaskConical size={15} className="text-violet-400"/>
+          <span className="text-xs font-semibold text-slate-300">ذكاء التقنية</span>
+          {perf && latestSnap && (
+            <span className={`text-xs font-bold ${scoreColor(latestSnap.score)}`}>{latestSnap.score}/100</span>
+          )}
+        </div>
+        <div className="flex gap-1.5">
+          <button onClick={load} className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 transition-all"><RefreshCw size={12}/></button>
+          <button onClick={triggerResearch} disabled={researchLoading} className="px-2.5 py-1 rounded-lg text-[10px] font-medium bg-violet-600/20 text-violet-300 hover:bg-violet-600/30 border border-violet-500/20 transition-all flex items-center gap-1 disabled:opacity-50">
+            {researchLoading ? <Loader2 size={10} className="animate-spin"/> : <Search size={10}/>}
+            بحث الآن
+          </button>
+        </div>
+      </div>
+
+      {/* Section Tabs */}
+      <div className="flex-shrink-0 flex border-b border-slate-800/50">
+        {(['perf','tech','code'] as const).map(s => (
+          <button key={s} onClick={() => setActiveSection(s)}
+            className={`flex-1 py-2 text-[10px] font-semibold transition-all ${activeSection===s ? 'text-violet-400 border-b-2 border-violet-500 bg-violet-500/5' : 'text-slate-600 hover:text-slate-400'}`}>
+            {s==='perf' ? '📊 الأداء' : s==='tech' ? '🔬 التقنيات' : '🔧 تحسين الكود'}
+            {s==='code' && improvements.length > 0 && <span className="mr-1 px-1 py-0.5 bg-violet-500 rounded-full text-[9px] text-white">{improvements.length}</span>}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+
+        {/* ── قسم الأداء ── */}
+        {activeSection === 'perf' && perf && (
+          <>
+            {/* API Health */}
+            <div className="rounded-xl bg-slate-900/60 border border-slate-800/50 p-3">
+              <p className="text-[10px] uppercase tracking-widest text-slate-600 mb-2">صحة الخدمات</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { label: 'DeepSeek', ok: perf.apiHealth.deepseek },
+                  { label: 'Ollama', ok: perf.apiHealth.ollama },
+                  { label: 'خدمة الوكيل', ok: perf.apiHealth.agentService },
+                  { label: 'المتصفح', ok: perf.apiHealth.browser },
+                ].map(({ label, ok }) => (
+                  <div key={label} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border ${ok ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${ok ? 'bg-emerald-500' : 'bg-red-500'}`}/>
+                    <span className={`text-[10px] ${ok ? 'text-emerald-400' : 'text-red-400'}`}>{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Task Stats */}
+            <div className="rounded-xl bg-slate-900/60 border border-slate-800/50 p-3">
+              <p className="text-[10px] uppercase tracking-widest text-slate-600 mb-2">إحصائيات المهام</p>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="text-center"><p className="text-lg font-bold text-white">{perf.taskStats.total}</p><p className="text-[9px] text-slate-500">إجمالي</p></div>
+                <div className="text-center"><p className="text-lg font-bold text-emerald-400">{perf.taskStats.success}</p><p className="text-[9px] text-slate-500">نجاح</p></div>
+                <div className="text-center"><p className="text-lg font-bold text-red-400">{perf.taskStats.failed}</p><p className="text-[9px] text-slate-500">فشل</p></div>
+              </div>
+              {perf.taskStats.total > 0 && (
+                <div className="mt-2">
+                  <div className="flex justify-between text-[9px] text-slate-500 mb-1">
+                    <span>معدل النجاح</span>
+                    <span>{Math.round(perf.taskStats.success/perf.taskStats.total*100)}%</span>
+                  </div>
+                  <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${Math.round(perf.taskStats.success/perf.taskStats.total*100)}%` }}/>
+                  </div>
+                </div>
+              )}
+              <p className="text-[9px] text-slate-600 mt-2">متوسط الوقت: {Math.round((perf.taskStats.avgDurationMs||0)/1000)}ث</p>
+            </div>
+
+            {/* Alerts */}
+            {perf.alerts.length > 0 && (
+              <div className="rounded-xl bg-slate-900/60 border border-slate-800/50 p-3">
+                <p className="text-[10px] uppercase tracking-widest text-slate-600 mb-2">التنبيهات</p>
+                <div className="space-y-1.5">
+                  {perf.alerts.slice(0,5).map((a, i) => (
+                    <div key={i} className={`flex items-start gap-2 px-2.5 py-1.5 rounded-lg text-[10px] border ${a.level==='critical' ? 'bg-red-500/8 border-red-500/20 text-red-300' : 'bg-yellow-500/8 border-yellow-500/20 text-yellow-300'}`}>
+                      <AlertTriangle size={10} className="mt-0.5 flex-shrink-0"/>
+                      <span>{a.message}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Latest metrics */}
+            {latestSnap && latestSnap.metrics.length > 0 && (
+              <div className="rounded-xl bg-slate-900/60 border border-slate-800/50 p-3">
+                <p className="text-[10px] uppercase tracking-widest text-slate-600 mb-2">مقاييس مفصّلة</p>
+                <div className="space-y-1.5">
+                  {latestSnap.metrics.map((m, i) => (
+                    <div key={i} className="flex justify-between items-center">
+                      <span className="text-[10px] text-slate-500">{m.name.replace(/_/g,' ')}</span>
+                      <span className={`text-[10px] font-mono font-bold ${m.status==='healthy'?'text-emerald-400':m.status==='warning'?'text-yellow-400':'text-red-400'}`}>{m.value}{m.unit}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* AI Report */}
+            <button onClick={loadReport} disabled={loading} className="w-full py-2 rounded-lg text-[10px] font-medium bg-indigo-600/20 text-indigo-300 border border-indigo-500/20 hover:bg-indigo-600/30 flex items-center justify-center gap-1.5">
+              {loading ? <Loader2 size={10} className="animate-spin"/> : <Brain size={10}/>}
+              توليد تقرير AI شامل
+            </button>
+            {report && (
+              <div className="rounded-xl bg-slate-900/60 border border-slate-800/50 p-3">
+                <p className="text-[10px] text-slate-400 leading-relaxed whitespace-pre-wrap">{report}</p>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── قسم التقنيات ── */}
+        {activeSection === 'tech' && (
+          <>
+            {!knowledge || knowledge.entries.length === 0 ? (
+              <div className="text-center py-10">
+                <FlaskConical size={28} className="text-slate-700 mx-auto mb-3"/>
+                <p className="text-xs text-slate-600">لم يتم البحث بعد</p>
+                <p className="text-[10px] text-slate-700 mt-1">اضغط "بحث الآن" لبدء البحث</p>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 text-[10px] text-slate-600">
+                  <Clock size={10}/>
+                  <span>آخر بحث: {knowledge.lastResearch ? new Date(knowledge.lastResearch).toLocaleString('ar-SA') : '—'}</span>
+                  <span className="mr-auto text-slate-700">#{knowledge.researchCount} بحث</span>
+                </div>
+                {knowledge.entries.map((e, i) => (
+                  <div key={i} className="rounded-xl bg-slate-900/60 border border-slate-800/50 p-3">
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
+                      <p className="text-[10px] font-semibold text-slate-300 leading-tight">{e.topic}</p>
+                      <span className={`flex-shrink-0 text-[9px] px-1.5 py-0.5 rounded-full ${relColor(e.relevance)}`}>{e.relevance}</span>
+                    </div>
+                    {e.summary && <p className="text-[9px] text-slate-500 mb-2 leading-relaxed">{e.summary}</p>}
+                    {e.keyItems.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {e.keyItems.slice(0,4).map((item, j) => (
+                          <span key={j} className="text-[9px] px-1.5 py-0.5 bg-slate-800 text-slate-400 rounded-md">{item}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </>
+            )}
+          </>
+        )}
+
+        {/* ── قسم تحسين الكود ── */}
+        {activeSection === 'code' && (
+          <>
+            {improvements.length === 0 ? (
+              <div className="text-center py-10">
+                <Code2 size={28} className="text-slate-700 mx-auto mb-3"/>
+                <p className="text-xs text-slate-600">لا توجد تحسينات معلقة</p>
+                <p className="text-[10px] text-slate-700 mt-1">يتم التحليل كل 12 ساعة تلقائياً</p>
+              </div>
+            ) : (
+              improvements.map(imp => (
+                <div key={imp.id} className="rounded-xl bg-slate-900/60 border border-slate-800/50 p-3">
+                  <div className="flex items-start gap-2 mb-1.5">
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full border flex-shrink-0 ${priColor(imp.priority)}`}>{imp.priority}</span>
+                    <p className="text-[10px] font-semibold text-slate-300 leading-tight">{imp.title}</p>
+                  </div>
+                  <p className="text-[9px] text-slate-500 mb-1.5 leading-relaxed">{imp.description}</p>
+                  <p className="text-[9px] text-slate-600 truncate mb-2">📄 {imp.file.split('/').pop()}</p>
+                  {imp.reason && <p className="text-[9px] text-indigo-400/70 mb-2 leading-relaxed">💡 {imp.reason}</p>}
+                  <div className="flex gap-1.5">
+                    <button onClick={() => applyImprovement(imp.id)}
+                      className="flex-1 py-1 rounded-lg text-[10px] font-medium bg-emerald-600/20 text-emerald-300 border border-emerald-500/20 hover:bg-emerald-600/30 flex items-center justify-center gap-1">
+                      <Check size={9}/> تطبيق
+                    </button>
+                    <button onClick={() => rejectImprovement(imp.id)}
+                      className="flex-1 py-1 rounded-lg text-[10px] font-medium bg-red-600/10 text-red-400/70 border border-red-500/20 hover:bg-red-600/20 flex items-center justify-center gap-1">
+                      <X size={9}/> رفض
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </>
+        )}
       </div>
     </div>
   );
@@ -958,9 +1216,10 @@ const App: React.FC = () => {
   );
 
   const TABS = [
-    { id: 'chat'    as ActiveTab, label: 'المحادثة', icon: Bot     },
+    { id: 'chat'    as ActiveTab, label: 'المحادثة', icon: Bot      },
     { id: 'plan'    as ActiveTab, label: 'الخطة',    icon: ListChecks, badge: !!currentPlan },
-    { id: 'browser' as ActiveTab, label: 'المتصفح',  icon: Monitor, badge: isAgentBusy && browserHasFrame },
+    { id: 'browser' as ActiveTab, label: 'المتصفح',  icon: Monitor,  badge: isAgentBusy && browserHasFrame },
+    { id: 'tech'    as ActiveTab, label: 'الذكاء',   icon: FlaskConical },
   ];
 
   return (
@@ -1104,6 +1363,8 @@ const App: React.FC = () => {
                 ? <div className="h-full overflow-y-auto">
                     <PlanPanel plan={currentPlan} agentActivity={agentActivity} isAgentBusy={isAgentBusy}/>
                   </div>
+                : activeTab === 'tech'
+                ? <TechPanel apiBase={(import.meta.env.VITE_API_URL as string) || ''}/>
                 : <BrowserPanel
                     frameSrc={browserFrameSrc} browserHasFrame={browserHasFrame}
                     isAgentBusy={isAgentBusy} onEmit={emitBrowser}

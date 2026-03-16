@@ -8,6 +8,7 @@ import { plannerAgent, TaskPlan } from "./planner.js";
 import { memorySystem } from "./memory.js";
 import { multiAgentOrchestrator } from "./multiAgent.js";
 import { learningEngine } from "./learningEngine.js";
+import { techIntelligence } from "./techIntelligence.js";
 
 const MAX_ITERATIONS = 20;
 const MAX_RETRIES    = 2;
@@ -143,25 +144,30 @@ ACTION: <الإجراء> | PARAM: <القيمة>
 
 const ARABIC_RULE = `\nقاعدة أساسية: جميع ردودك وتفكيرك يجب أن يكون باللغة العربية حصراً.`;
 
-const SYSTEM_PROMPTS: Record<string, string> = {
-  code: `أنت CortexFlow، وكيل برمجة محترف.
-تكتب كوداً نظيفاً وموثّقاً. تحلّل المتطلبات قبل الكتابة. تقدّم شرحاً موجزاً مع الكود.${ARABIC_RULE}`,
+function buildSystemPrompts(): Record<string, string> {
+  const tech = techIntelligence.getTechContextForAgent();
+  const techNote = tech ? `\n\n🔬 معرفة تقنية محدّثة:${tech}` : "";
+  return {
+    code: `أنت CortexFlow، وكيل برمجة محترف.
+تكتب كوداً نظيفاً وموثّقاً. تحلّل المتطلبات قبل الكتابة. تقدّم شرحاً موجزاً مع الكود.${techNote}${ARABIC_RULE}`,
 
-  research: `أنت CortexFlow، وكيل بحث وتحليل متعمق.
-تجمع المعلومات بدقة، تحلّل من زوايا متعددة، وتقدّم ملخصات منظمة وشاملة.${ARABIC_RULE}`,
+    research: `أنت CortexFlow، وكيل بحث وتحليل متعمق.
+تجمع المعلومات بدقة، تحلّل من زوايا متعددة، وتقدّم ملخصات منظمة وشاملة.${techNote}${ARABIC_RULE}`,
 
-  creative: `أنت CortexFlow، وكيل إبداعي متميز.
+    creative: `أنت CortexFlow، وكيل إبداعي متميز.
 تنتج محتوى أصيلاً وجذاباً بأسلوب احترافي. تتكيّف مع أسلوب المستخدم ومتطلباته.${ARABIC_RULE}`,
 
-  math: `أنت CortexFlow، وكيل رياضيات ومنطق.
+    math: `أنت CortexFlow، وكيل رياضيات ومنطق.
 تحلّل المسائل خطوة بخطوة، تتحقق من الحسابات، وتشرح المنطق بوضوح.${ARABIC_RULE}`,
 
-  reasoning: `أنت CortexFlow، وكيل تفكير استراتيجي.
-تحلّل المواقف من جميع الجوانب، تقيّم الخيارات، وتقدّم توصيات مدعومة بالمنطق.${ARABIC_RULE}`,
+    reasoning: `أنت CortexFlow، وكيل تفكير استراتيجي.
+تحلّل المواقف من جميع الجوانب، تقيّم الخيارات، وتقدّم توصيات مدعومة بالمنطق.${techNote}${ARABIC_RULE}`,
 
-  default: `أنت CortexFlow، وكيل ذكاء اصطناعي احترافي متكامل.
-تنفّذ المهام بكفاءة واحترافية عالية. تردّ دائماً باللغة العربية.${ARABIC_RULE}`,
-};
+    default: `أنت CortexFlow، وكيل ذكاء اصطناعي احترافي متكامل.
+تنفّذ المهام بكفاءة واحترافية عالية. تردّ دائماً باللغة العربية.${techNote}${ARABIC_RULE}`,
+  };
+}
+const SYSTEM_PROMPTS: Record<string, string> = buildSystemPrompts();
 
 // ── الوكيل الرئيسي ─────────────────────────────────────────────────────────
 
@@ -171,6 +177,12 @@ class AgentRunner extends EventEmitter {
     const start = Date.now();
     taskStore.updateTask(task.taskId, { status: "running" });
     this.emit("taskStart", { taskId: task.taskId, description: task.description });
+
+    // تسجيل بداية المهمة في نظام المراقبة
+    techIntelligence.onTaskStart(task.taskId);
+
+    // تحديث السياق التقني في كل مهمة
+    Object.assign(SYSTEM_PROMPTS, buildSystemPrompts());
 
     memorySystem.initSession(task.taskId, task.description);
 
@@ -213,6 +225,7 @@ class AgentRunner extends EventEmitter {
       const msg = err.message || "Unknown error";
       memorySystem.recordFailure(task.taskId, task.description, msg, "النهج الافتراضي");
       learningEngine.recordTaskOutcome(false);
+      techIntelligence.onTaskEnd(task.taskId, false);
       try { learningEngine.learnStrategy(task.description, [`فشل: ${msg.substring(0, 80)}`], false); } catch {}
       taskStore.updateTask(task.taskId, { status: "failed", error: msg });
       this.emit("taskFail", { taskId: task.taskId, error: msg });
@@ -289,6 +302,7 @@ class AgentRunner extends EventEmitter {
       learningEngine.recordTaskOutcome(true);
     } catch {}
 
+    techIntelligence.onTaskEnd(taskId, true);
     taskStore.updateTask(taskId, { status: "completed", result: finalReview });
     taskStore.addLog({ taskId, agentType: "MultiAgent", action: "task_complete", output: finalReview.substring(0, 300), durationMs: duration });
     this.emit("taskSuccess", { taskId, result: finalReview });
@@ -367,6 +381,7 @@ class AgentRunner extends EventEmitter {
 
       modelSelector.recordResult(model, category, true, duration / 1000, 0.8);
 
+      techIntelligence.onTaskEnd(taskId, true);
       taskStore.updateTask(taskId, { status: "completed", result });
       taskStore.addLog({ taskId, agentType: "PythonAgent", action: "task_complete", output: result.substring(0, 300), durationMs: duration });
       this.emit("taskSuccess", { taskId, result });
@@ -735,6 +750,7 @@ class AgentRunner extends EventEmitter {
       this.emitStep(taskId, "THINK", `🧠 تعلّمت من هذه المهمة وحفظت الاستراتيجية الناجحة`);
     } catch {}
 
+    techIntelligence.onTaskEnd(taskId, true);
     taskStore.updateTask(taskId, { status: "completed", result: verifyResult });
     taskStore.addLog({ taskId, agentType: "AgentRunner", action: "task_complete", output: verifyResult.substring(0, 300), durationMs: duration });
     this.emit("taskSuccess", { taskId, result: verifyResult });
@@ -776,6 +792,7 @@ class AgentRunner extends EventEmitter {
     const duration = Date.now() - start;
     modelSelector.recordResult(model, category, true, duration / 1000, 0.6);
 
+    techIntelligence.onTaskEnd(task.taskId, true);
     taskStore.updateTask(task.taskId, { status: "completed", result: finalResult });
     taskStore.addLog({ taskId: task.taskId, agentType: "AgentRunner", action: "task_complete", output: finalResult.substring(0, 300), durationMs: duration });
     this.emit("taskSuccess", { taskId: task.taskId, result: finalResult });

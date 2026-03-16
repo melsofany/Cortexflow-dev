@@ -415,6 +415,220 @@ class ShellTool(Tool):
             return f"خطأ: {str(e)}"
 
 
+class BrowserSelectTool(Tool):
+    """
+    أداة متخصصة للتعامل مع القوائم المنسدلة (<select>) في صفحات الويب.
+    تحل مشكلة التمييز بين قوائم اليوم والشهر والسنة (مثل فيسبوك).
+    """
+    name = "browser_select"
+    description = (
+        "تعبئة قوائم منسدلة (<select>) في صفحة ويب مفتوحة بالمتصفح. "
+        "مثالية لحقول تاريخ الميلاد (اليوم/الشهر/السنة) في فيسبوك وغيره. "
+        "تقبل: url (اختياري), selects: قائمة من {selector, value, method}"
+    )
+
+    _DRIVER_CODE = """
+import time, sys
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import Select, WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+import json
+
+actions = {actions_json}
+url     = {url_repr}
+
+opts = Options()
+opts.add_argument("--headless")
+opts.add_argument("--no-sandbox")
+opts.add_argument("--disable-dev-shm-usage")
+opts.add_argument("--disable-gpu")
+
+driver = webdriver.Chrome(options=opts)
+wait   = WebDriverWait(driver, 15)
+log    = []
+
+try:
+    if url:
+        driver.get(url)
+        time.sleep(2)
+
+    for idx, act in enumerate(actions):
+        sel      = act.get("selector", "")
+        val      = act.get("value", "")
+        method   = act.get("method", "auto")   # auto | by_text | by_value | by_index | nth_select
+        nth      = act.get("nth", None)         # للاستخدام مع nth_select: 0=أول, 1=ثاني...
+        wait_sec = float(act.get("wait_after", 0.5))
+
+        # ── اختيار العنصر ──────────────────────────────────────────────
+        if method == "nth_select" and nth is not None:
+            # يختار القائمة حسب ترتيبها في الصفحة (0=الأولى)
+            all_selects = driver.find_elements(By.TAG_NAME, "select")
+            if nth >= len(all_selects):
+                log.append(f"[{idx}] خطأ: لا يوجد select رقم {nth} (المتوفر: {len(all_selects)})")
+                continue
+            elem = all_selects[nth]
+        elif sel.startswith("//") or sel.startswith("(//"):
+            elem = wait.until(EC.presence_of_element_located((By.XPATH, sel)))
+        else:
+            elem = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, sel)))
+
+        s = Select(elem)
+
+        # ── طريقة الاختيار ──────────────────────────────────────────────
+        if method == "by_index":
+            s.select_by_index(int(val))
+            log.append(f"[{idx}] اختار index={val} من القائمة")
+        elif method == "by_value":
+            s.select_by_value(str(val))
+            log.append(f"[{idx}] اختار value='{val}' من القائمة")
+        elif method == "by_text":
+            s.select_by_visible_text(str(val))
+            log.append(f"[{idx}] اختار نص='{val}' من القائمة")
+        else:
+            # auto: جرّب by_value أولاً ثم by_text
+            try:
+                s.select_by_value(str(val))
+                log.append(f"[{idx}] اختار (value) '{val}'")
+            except Exception:
+                try:
+                    s.select_by_visible_text(str(val))
+                    log.append(f"[{idx}] اختار (text) '{val}'")
+                except Exception as e2:
+                    log.append(f"[{idx}] فشل الاختيار: {e2}")
+
+        time.sleep(wait_sec)
+
+    print("نجاح: " + " | ".join(log))
+
+except Exception as e:
+    print(f"خطأ: {{e}}")
+finally:
+    driver.quit()
+"""
+
+    async def execute(self, params: dict) -> str:
+        url     = params.get("url", "")
+        selects = params.get("selects", [])
+
+        if not selects:
+            return "خطأ: يجب تمرير قائمة selects"
+
+        code = self._DRIVER_CODE.replace(
+            "{actions_json}", json.dumps(selects, ensure_ascii=False),
+        ).replace(
+            "{url_repr}", repr(url),
+        )
+
+        with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False, encoding="utf-8") as f:
+            f.write(code)
+            fname = f.name
+
+        try:
+            result = subprocess.run(
+                ["python3", fname],
+                capture_output=True, text=True, timeout=60
+            )
+            out = result.stdout.strip()
+            err = result.stderr.strip()
+            if err and not out:
+                return f"خطأ في التنفيذ:\n{err[:800]}"
+            return out or "اكتمل التنفيذ بدون مخرجات"
+        except subprocess.TimeoutExpired:
+            return "انتهت المهلة (60 ثانية)"
+        except Exception as e:
+            return f"خطأ: {str(e)}"
+        finally:
+            try:
+                os.unlink(fname)
+            except:
+                pass
+
+
+class BrowserPageAnalyzerTool(Tool):
+    """
+    يقرأ الصفحة الحالية ويُعيد قائمة بجميع عناصر <select> مع خياراتها.
+    يساعد الوكيل على فهم بنية النموذج قبل التعبئة.
+    """
+    name = "browser_analyze_selects"
+    description = (
+        "يفتح رابطاً ويُعيد قائمة بكل القوائم المنسدلة (<select>) الموجودة في الصفحة "
+        "مع اسمها ومحتوياتها. استخدمه قبل browser_select لتحديد المحددات الصحيحة."
+    )
+
+    _ANALYZE_CODE = """
+import time, json
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+
+url = {url_repr}
+
+opts = Options()
+opts.add_argument("--headless")
+opts.add_argument("--no-sandbox")
+opts.add_argument("--disable-dev-shm-usage")
+opts.add_argument("--disable-gpu")
+
+driver = webdriver.Chrome(options=opts)
+result = []
+
+try:
+    driver.get(url)
+    time.sleep(2)
+    
+    selects = driver.find_elements(By.TAG_NAME, "select")
+    for i, sel in enumerate(selects):
+        name = sel.get_attribute("name") or ""
+        id_  = sel.get_attribute("id") or ""
+        opts_list = [o.text for o in sel.find_elements(By.TAG_NAME, "option")]
+        result.append({{
+            "index": i,
+            "name": name,
+            "id": id_,
+            "options_count": len(opts_list),
+            "sample_options": opts_list[:6],
+        }})
+    
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+except Exception as e:
+    print(f"خطأ: {{e}}")
+finally:
+    driver.quit()
+"""
+
+    async def execute(self, params: dict) -> str:
+        url = params.get("url", "")
+        if not url:
+            return "خطأ: يجب تمرير url"
+
+        code = self._ANALYZE_CODE.replace("{url_repr}", repr(url))
+
+        with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False, encoding="utf-8") as f:
+            f.write(code)
+            fname = f.name
+
+        try:
+            result = subprocess.run(
+                ["python3", fname],
+                capture_output=True, text=True, timeout=45
+            )
+            out = result.stdout.strip()
+            err = result.stderr.strip()
+            return out if out else f"خطأ: {err[:500]}"
+        except subprocess.TimeoutExpired:
+            return "انتهت المهلة"
+        except Exception as e:
+            return f"خطأ: {str(e)}"
+        finally:
+            try:
+                os.unlink(fname)
+            except:
+                pass
+
+
 # تسجيل الأدوات
 TOOLS: dict[str, Tool] = {
     "execute_code": CodeExecutorTool(),
@@ -423,6 +637,8 @@ TOOLS: dict[str, Tool] = {
     "write_file": FileWriteTool(),
     "web_search": WebSearchTool(),
     "run_shell": ShellTool(),
+    "browser_select": BrowserSelectTool(),
+    "browser_analyze_selects": BrowserPageAnalyzerTool(),
 }
 
 TOOLS_DESCRIPTION = "\n".join([
@@ -588,16 +804,33 @@ PARAMS: {{"مفتاح": "قيمة"}}
 
 للإنهاء:
 RESULT: <النتيجة>
+
+═══ تعليمات خاصة للقوائم المنسدلة (dropdowns) ═══
+عند التعامل مع صفحات فيها قوائم منسدلة (<select>) مثل تاريخ الميلاد في فيسبوك:
+
+1. استخدم browser_analyze_selects أولاً لتحليل الصفحة وفهم ترتيب القوائم.
+2. استخدم browser_select مع method="nth_select" و nth=0 لليوم, nth=1 للشهر, nth=2 للسنة.
+   - لا تستخدم محدد CSS عام ("select") لأنه يستهدف أول قائمة فقط.
+   - كل قائمة يجب أن تُستهدف بشكل مستقل بـ nth الخاص بها.
+3. مثال لتاريخ ميلاد في فيسبوك:
+TOOL: browser_select
+PARAMS: {{"url": "https://facebook.com/reg", "selects": [
+  {{"method": "nth_select", "nth": 0, "value": "15", "method2": "by_value", "wait_after": 0.8}},
+  {{"method": "nth_select", "nth": 1, "value": "Jan", "method2": "by_text", "wait_after": 0.8}},
+  {{"method": "nth_select", "nth": 2, "value": "1990", "method2": "by_value", "wait_after": 0.5}}
+]}}
+
+تذكر: كل قائمة (يوم/شهر/سنة) عنصر منفصل يجب استهدافه بمنتهى الدقة.
 """.format(tools=TOOLS_DESCRIPTION)
 
 # Prompt مبسّط للمهام التي لا تحتاج أدوات
 SIMPLE_SYSTEM_PROMPT = "أنت CortexFlow، مساعد ذكاء اصطناعي محترف. أجب دائماً بنفس لغة المستخدم. قدّم إجابة مباشرة وشاملة."
 
 # الفئات التي تحتاج أدوات فقط
-TOOL_CATEGORIES = {"code", "math", "file", "agent"}
+TOOL_CATEGORIES = {"code", "math", "file", "agent", "browser"}
 
 # الفئات التي تُجاب مباشرة بدون OODA معقد
-DIRECT_CATEGORIES = {"simple", "creative", "research", "translation", "reasoning", "browser"}
+DIRECT_CATEGORIES = {"simple", "creative", "research", "translation", "reasoning"}
 
 
 async def parse_and_execute_tool(response: str) -> tuple[str | None, str | None]:
@@ -677,7 +910,17 @@ async def ooda_agent(task: str, model: str, category: str, max_iterations: int =
         messages = [{"role": "system", "content": MASTER_SYSTEM_PROMPT}]
 
         # Observe
-        observe_prompt = f"المهمة: {task}\n\nحلّل ما المطلوب وهل تحتاج أداة من: {', '.join(TOOLS.keys())}"
+        if category == "browser":
+            observe_prompt = (
+                f"المهمة: {task}\n\n"
+                "هذه مهمة تصفح ويب. خطط للتنفيذ باستخدام الأدوات المتاحة:\n"
+                "- browser_analyze_selects: لتحليل القوائم المنسدلة في الصفحة أولاً\n"
+                "- browser_select: لتعبئة القوائم المنسدلة (اليوم/الشهر/السنة) كل واحدة بشكل مستقل\n"
+                "- execute_code: لتنفيذ كود Selenium متقدم إذا لزم\n"
+                "تذكر: القوائم المنسدلة يجب استهدافها بـ nth (0=الأولى, 1=الثانية...) وليس بمحدد عام."
+            )
+        else:
+            observe_prompt = f"المهمة: {task}\n\nحلّل ما المطلوب وهل تحتاج أداة من: {', '.join(TOOLS.keys())}"
         messages.append({"role": "user", "content": observe_prompt})
         observation, obs_src = await smart_chat(model, messages, max_tokens=300, step_name="OBSERVE")
         messages.append({"role": "assistant", "content": observation})

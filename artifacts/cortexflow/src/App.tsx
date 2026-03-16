@@ -739,7 +739,14 @@ const App: React.FC = () => {
 
   const autoClassifyType = useCallback((text: string): string => {
     const t = text.toLowerCase();
-    const browserKw = ['افتح','تصفح','انتقل','موقع','اذهب','سجل','تسجيل','facebook','twitter','instagram','youtube','google','يوتيوب','ويب','web','url','http','احجز','اشتر'];
+    const browserKw = [
+      'افتح','تصفح','انتقل','موقع','اذهب','سجل دخول','تسجيل دخول',
+      'facebook','twitter','instagram','youtube','google','tiktok','snapchat','linkedin',
+      'فيسبوك','تويتر','انستجرام','يوتيوب','جوجل','تيكتوك','سناب','لينكدإن',
+      'انشئ حساب','أنشئ حساب','انشاء حساب','إنشاء حساب','سجل حساب',
+      'ويب','web','url','http','احجز','اشتر','اشترك','ادفع',
+      'ابحث في الويب','ابحث على الإنترنت','search the web',
+    ];
     const codeKw    = ['اكتب كود','برمجة','كود','script','python','javascript','برنامج','function','api','class','debug','typescript','sql','ابرمج'];
     const researchKw= ['ابحث','اشرح','ما هو','ما هي','كيف','لماذا','معلومات','تحليل','قارن','تقرير','ملخص','explain','research','analyze'];
     if (browserKw.some(k => t.includes(k))) return 'browser';

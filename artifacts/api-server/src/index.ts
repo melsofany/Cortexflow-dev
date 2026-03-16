@@ -320,19 +320,33 @@ async function startServer() {
     console.warn("[Server] Ollama init failed — running without local AI");
   }
 
+  // ── Helper: broadcast health update to all connected clients ────────────
+  const broadcastHealth = () => {
+    io.emit("techUpdate", {
+      performance: techIntelligence.monitor.getLatestSnapshot(),
+      pendingImprovements: techIntelligence.improver.getPending().length,
+      apiHealth: techIntelligence.monitor.getData().apiHealth,
+    });
+  };
+
   // ── Pre-initialize browser so it's ready before first task ───────────────
   browserAgent.initialize()
     .then((ok) => {
       console.log(`[Server] Browser: ${ok ? "✓ Chromium ready" : "✗ not available"}`);
       techIntelligence.monitor.setBrowserHealth(ok);
+      broadcastHealth();
     })
     .catch(() => {
       console.warn("[Server] Browser init warning");
       techIntelligence.monitor.setBrowserHealth(false);
+      broadcastHealth();
     });
 
   // ── Tech Intelligence: بحث، تطوير ذاتي، مراقبة ────────────────────────
   techIntelligence.startBackgroundJobs();
+
+  // ── إرسال تحديث بعد الفحص الأولي (يتم بعد 5 ثوانٍ) ──────────────────
+  setTimeout(() => broadcastHealth(), 8 * 1000);
 
   // ── Keep Agent Service alive on Render starter (spin-down prevention) ───
   if (IS_CLOUD) {
@@ -351,14 +365,8 @@ async function startServer() {
 
   // ── إرسال تحديثات التقنية عبر Socket.io ───────────────────────────────
   setInterval(() => {
-    if (io.engine.clientsCount > 0) {
-      io.emit("techUpdate", {
-        performance: techIntelligence.monitor.getLatestSnapshot(),
-        pendingImprovements: techIntelligence.improver.getPending().length,
-        apiHealth: techIntelligence.monitor.getData().apiHealth,
-      });
-    }
-  }, 60 * 1000); // كل دقيقة
+    if (io.engine.clientsCount > 0) broadcastHealth();
+  }, 15 * 1000); // كل 15 ثانية
 
   httpServer.listen(port, () => {
     console.log(`[Server] CortexFlow running on port ${port}`);

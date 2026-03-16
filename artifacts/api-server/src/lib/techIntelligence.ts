@@ -658,10 +658,10 @@ class TechIntelligenceSystem {
       }
     }, 12 * 60 * 60 * 1000);
 
-    // فحص فوري عند البدء (بعد 30 ثانية)
+    // فحص فوري عند البدء (بعد 5 ثوانٍ)
     setTimeout(() => {
       this.monitor.checkHealth().catch(console.error);
-    }, 30 * 1000);
+    }, 5 * 1000);
 
     // بحث تقني فوري إذا لم يحدث مؤخراً (بعد 60 ثانية)
     setTimeout(async () => {

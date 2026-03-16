@@ -415,7 +415,11 @@ class AgentRunner extends EventEmitter {
   waitForUserInput(taskId: string, question: string): Promise<string> {
     this.emit("needInput", { taskId, question });
     return new Promise((resolve) => {
-      const timer = setTimeout(() => resolve(""), 120000);
+      // 10 minutes — gives plenty of time for reconnection
+      const timer = setTimeout(() => {
+        this.removeAllListeners(`userInput:${taskId}`);
+        resolve("");
+      }, 600000);
       this.once(`userInput:${taskId}`, (answer: string) => {
         clearTimeout(timer);
         resolve(answer);

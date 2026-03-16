@@ -1078,13 +1078,27 @@ const App: React.FC = () => {
     const socket = io(apiBase || '/', {
       path: '/api/socket',
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 10,
-      reconnectionDelay: 2000,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1500,
+      reconnectionDelayMax: 5000,
     });
     socketRef.current = socket;
 
-    socket.on('connect', () => { setIsConnected(true); addSystem('متصل بالخادم بنجاح', 'success'); socket.emit('getStatus'); });
-    socket.on('disconnect', () => { setIsConnected(false); addSystem('انقطع الاتصال', 'error'); });
+    socket.on('connect', () => {
+      setIsConnected(true);
+      addSystem('متصل بالخادم بنجاح', 'success');
+      socket.emit('getStatus');
+    });
+    socket.on('disconnect', () => {
+      setIsConnected(false);
+      addSystem('⚠️ انقطع الاتصال — يتم إعادة الاتصال تلقائياً...', 'error');
+    });
+    socket.on('reconnect', (attempt: number) => {
+      addSystem(`🔄 تمت إعادة الاتصال (المحاولة ${attempt})`, 'success');
+    });
+    socket.on('reconnect_failed', () => {
+      addSystem('❌ فشلت إعادة الاتصال — يرجى تحديث الصفحة', 'error');
+    });
     socket.on('status', (d: { tasks: Task[]; isCloud?: boolean }) => {
       setTasks(d.tasks || []);
       if (d.isCloud !== undefined) setIsCloud(d.isCloud);

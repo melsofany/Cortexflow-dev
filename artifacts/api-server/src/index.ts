@@ -38,6 +38,21 @@ browserAgent.on("screenshot", (data: { image: string }) => {
 let lastCompletedTask: { taskId: string; result: string } | null = null;
 let lastFailedTask:    { taskId: string; error: string }   | null = null;
 
+// ── Track pending user-input request so it can be re-sent on reconnect ───────
+let pendingInputRequest: { taskId: string; question: string } | null = null;
+
+// Forward needInput to the global tracker
+agentRunner.on("needInput", (d: { taskId: string; question: string }) => {
+  pendingInputRequest = d;
+});
+// Clear tracker when task finishes
+agentRunner.on("taskSuccess", (d: { taskId: string }) => {
+  if (pendingInputRequest?.taskId === d.taskId) pendingInputRequest = null;
+});
+agentRunner.on("taskFail", (d: { taskId: string }) => {
+  if (pendingInputRequest?.taskId === d.taskId) pendingInputRequest = null;
+});
+
 // ── Conversation history per session (socket) ────────────────────────────────
 const conversationStore = new Map<string, ConversationMessage[]>();
 const MAX_CONVERSATION_HISTORY = 10;
@@ -84,6 +99,24 @@ io.on("connection", (socket) => {
       type: runningTask.type,
     });
   }
+
+  // ── Re-deliver pending input request on reconnect ────────────────────────
+  if (pendingInputRequest) {
+    socket.emit("agentNeedsInput", pendingInputRequest);
+    console.log(`[Socket.io] Re-delivered pending input request to ${socket.id}: "${pendingInputRequest.question.substring(0, 60)}"`);
+  }
+
+  // ── Global userInput listener — forwards from ANY socket to agentRunner ──
+  // This ensures reconnected clients can answer pending input requests
+  socket.on("userInput", (data: { taskId: string; answer: string }) => {
+    if (data.taskId && data.answer !== undefined) {
+      agentRunner.emit(`userInput:${data.taskId}`, data.answer);
+      if (pendingInputRequest?.taskId === data.taskId) {
+        pendingInputRequest = null;
+      }
+      console.log(`[Socket.io] userInput received from ${socket.id} for task ${data.taskId}`);
+    }
+  });
 
   // Initialize conversation history for new socket
   if (!conversationStore.has(socket.id)) {
@@ -159,11 +192,6 @@ io.on("connection", (socket) => {
       const onNeedInput = (d: any) => {
         if (d.taskId === task.taskId) io.emit("agentNeedsInput", d);
       };
-      const onUserInput = (data: any) => {
-        if (data.taskId === task.taskId) {
-          agentRunner.emit(`userInput:${task.taskId}`, data.answer);
-        }
-      };
       const cleanup = () => {
         agentRunner.off("thinking",      onThinking);
         agentRunner.off("agentActivity", onAgentActivity);
@@ -172,7 +200,6 @@ io.on("connection", (socket) => {
         agentRunner.off("taskSuccess",   onSuccess);
         agentRunner.off("taskFail",      onFail);
         agentRunner.off("needInput",     onNeedInput);
-        socket.off("userInput", onUserInput);
       };
 
       agentRunner.on("thinking",      onThinking);
@@ -182,7 +209,6 @@ io.on("connection", (socket) => {
       agentRunner.on("taskSuccess",   onSuccess);
       agentRunner.on("taskFail",      onFail);
       agentRunner.on("needInput",     onNeedInput);
-      socket.on("userInput", onUserInput);
 
       agentRunner.executeTask(task).catch((err: any) => {
         console.error(`[Task] Execution error:`, err.message);

@@ -7,10 +7,10 @@ services:
     branch: master
     buildCommand: >-
       npm install -g pnpm@10 &&
-      pnpm install --frozen-lockfile &&
-      (npx playwright install chromium --with-deps || true) &&
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install --frozen-lockfile &&
       (pnpm --filter @workspace/api-zod build || true) &&
-      pnpm --filter @workspace/api-server build
+      pnpm --filter @workspace/api-server build &&
+      npx playwright install chromium --with-deps
     startCommand: "node artifacts/api-server/dist/index.cjs"
     healthCheckPath: /api/healthz
     plan: starter

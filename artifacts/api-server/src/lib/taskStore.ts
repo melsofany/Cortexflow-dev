@@ -3,6 +3,11 @@ import { v4 as uuidv4 } from "uuid";
 export type TaskStatus = "pending" | "running" | "completed" | "failed";
 export type TaskType = "browser" | "system" | "ai" | "research";
 
+export interface ConversationMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface Task {
   taskId: string;
   description: string;
@@ -15,6 +20,8 @@ export interface Task {
   error?: string;
   url?: string;
   steps?: TaskStep[];
+  conversationHistory?: ConversationMessage[];
+  sessionId?: string;
 }
 
 export interface TaskStep {
@@ -38,7 +45,7 @@ class TaskStore {
   private tasks: Map<string, Task> = new Map();
   private logs: LogEntry[] = [];
 
-  createTask(data: { description: string; type: TaskType; url?: string; priority?: number }): Task {
+  createTask(data: { description: string; type: TaskType; url?: string; priority?: number; conversationHistory?: ConversationMessage[]; sessionId?: string }): Task {
     const task: Task = {
       taskId: uuidv4(),
       description: data.description,
@@ -49,6 +56,8 @@ class TaskStore {
       updatedAt: new Date().toISOString(),
       url: data.url,
       steps: [],
+      conversationHistory: data.conversationHistory || [],
+      sessionId: data.sessionId,
     };
     this.tasks.set(task.taskId, task);
     return task;

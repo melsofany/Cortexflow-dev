@@ -1,7 +1,7 @@
 import { createServer } from "http";
 import { Server as SocketServer } from "socket.io";
 import app, { ollamaClient, agentRunner } from "./app.js";
-import { taskStore } from "./lib/taskStore.js";
+import { taskStore, ConversationMessage } from "./lib/taskStore.js";
 import { browserAgent } from "./lib/browserAgent.js";
 
 const rawPort = process.env["PORT"] ?? "8080";
@@ -35,6 +35,10 @@ browserAgent.on("screenshot", (data: { image: string }) => {
 // ── Track last completed task result for reconnect delivery ─────────────────
 let lastCompletedTask: { taskId: string; result: string } | null = null;
 let lastFailedTask:    { taskId: string; error: string }   | null = null;
+
+// ── Conversation history per session (socket) ────────────────────────────────
+const conversationStore = new Map<string, ConversationMessage[]>();
+const MAX_CONVERSATION_HISTORY = 10;
 
 // ── Socket.io connections ────────────────────────────────────────────────────
 io.on("connection", (socket) => {
@@ -71,15 +75,32 @@ io.on("connection", (socket) => {
     });
   }
 
+  // Initialize conversation history for new socket
+  if (!conversationStore.has(socket.id)) {
+    conversationStore.set(socket.id, []);
+  }
+
   // ── Submit + execute task ─────────────────────────────────────────────────
   socket.on("submitTask", async (data) => {
     try {
+      const sessionHistory = conversationStore.get(socket.id) || [];
+      const userMessage = data.description || data.task || "";
+
       const task = taskStore.createTask({
-        description: data.description || data.task || "",
+        description: userMessage,
         type: data.type || "ai",
         url: data.url,
         priority: typeof data.priority === "number" ? data.priority : 0,
+        conversationHistory: [...sessionHistory],
+        sessionId: socket.id,
       });
+
+      // Add user message to conversation history immediately
+      sessionHistory.push({ role: "user", content: userMessage });
+      if (sessionHistory.length > MAX_CONVERSATION_HISTORY * 2) {
+        sessionHistory.splice(0, 2);
+      }
+      conversationStore.set(socket.id, sessionHistory);
 
       console.log(`[Task] Submitted: "${task.description}" (type=${task.type}, id=${task.taskId})`);
 
@@ -99,6 +120,13 @@ io.on("connection", (socket) => {
         if (d.taskId === task.taskId) {
           console.log(`[Task] Completed: "${task.description}" → ${d.result?.substring(0, 80)}...`);
           lastCompletedTask = { taskId: d.taskId, result: d.result };
+          // Add assistant response to conversation history
+          const hist = conversationStore.get(socket.id) || [];
+          if (d.result) {
+            hist.push({ role: "assistant", content: d.result.substring(0, 500) });
+            if (hist.length > MAX_CONVERSATION_HISTORY * 2) hist.splice(0, 2);
+            conversationStore.set(socket.id, hist);
+          }
           io.emit("taskSuccess", d);
           io.emit("taskUpdate", taskStore.getTask(task.taskId));
           cleanup();
@@ -108,6 +136,11 @@ io.on("connection", (socket) => {
         if (d.taskId === task.taskId) {
           console.log(`[Task] Failed: "${task.description}" → ${d.error || d.reason}`);
           lastFailedTask = { taskId: d.taskId, error: d.error || d.reason || "خطأ غير معروف" };
+          // Add failure note to conversation history
+          const hist = conversationStore.get(socket.id) || [];
+          hist.push({ role: "assistant", content: `[فشلت المهمة: ${d.error || "خطأ غير معروف"}]` });
+          if (hist.length > MAX_CONVERSATION_HISTORY * 2) hist.splice(0, 2);
+          conversationStore.set(socket.id, hist);
           io.emit("taskFail", d);
           io.emit("taskUpdate", taskStore.getTask(task.taskId));
           cleanup();
@@ -230,6 +263,8 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     console.log(`[Socket.io] Client disconnected: ${socket.id}`);
+    // Keep conversation history for 30 minutes in case of reconnection
+    setTimeout(() => conversationStore.delete(socket.id), 30 * 60 * 1000);
   });
 });
 

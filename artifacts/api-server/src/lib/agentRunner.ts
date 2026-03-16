@@ -166,6 +166,19 @@ class AgentRunner extends EventEmitter {
 
     memorySystem.initSession(task.taskId, task.description);
 
+    // Show conversation context if there's prior history
+    const convHistory = task.conversationHistory || [];
+    if (convHistory.length > 0) {
+      const contextSummary = convHistory.slice(-4).map(m => `${m.role === "user" ? "المستخدم" : "المساعد"}: ${m.content.substring(0, 100)}`).join("\n");
+      this.emitStep(task.taskId, "THINK", `📌 سياق المحادثة السابقة:\n${contextSummary}`);
+    }
+
+    // Check for failure hints from similar past tasks
+    const failureHints = memorySystem.getFailureHints(task.description);
+    if (failureHints) {
+      this.emitStep(task.taskId, "THINK", failureHints);
+    }
+
     // Propagate multi-agent activity events
     const onAgentActivity = (d: any) => {
       if (d.taskId === task.taskId) {
@@ -190,6 +203,8 @@ class AgentRunner extends EventEmitter {
       }
     } catch (err: any) {
       const msg = err.message || "Unknown error";
+      // Record failure for self-improvement
+      memorySystem.recordFailure(task.taskId, task.description, msg, "النهج الافتراضي");
       taskStore.updateTask(task.taskId, { status: "failed", error: msg });
       this.emit("taskFail", { taskId: task.taskId, error: msg });
     } finally {
@@ -207,9 +222,19 @@ class AgentRunner extends EventEmitter {
   ): Promise<void> {
     const taskId = task.taskId;
 
+    // Build full task description with conversation context
+    const convHistory = task.conversationHistory || [];
+    let enrichedDescription = task.description;
+    if (convHistory.length > 0) {
+      const recentHistory = convHistory.slice(-6).map(m =>
+        `${m.role === "user" ? "المستخدم" : "المساعد"}: ${m.content.substring(0, 200)}`
+      ).join("\n");
+      enrichedDescription = `سياق المحادثة:\n${recentHistory}\n\nالمهمة الحالية: ${task.description}`;
+    }
+
     // 1) إنشاء الخطة
     this.emitStep(taskId, "PLANNING", "وكيل التخطيط يحلل المهمة...");
-    const plan = await plannerAgent.createPlan(task.description, (msgs, opts) =>
+    const plan = await plannerAgent.createPlan(enrichedDescription, (msgs, opts) =>
       smartChat(msgs, opts || {}, "PLANNING"),
     );
 
@@ -416,12 +441,18 @@ class AgentRunner extends EventEmitter {
       const initUrl     = await browserAgent.getCurrentUrl();
       this.emitStep(taskId, "THINK", `تحليل الصفحة:\n${initStruct}`);
 
+      // Build conversation context for browser task
+      const browserConvHistory = task.conversationHistory || [];
+      const browserConvContext = browserConvHistory.length > 0
+        ? `\nسياق المحادثة: ${browserConvHistory.slice(-2).map(m => `${m.role === "user" ? "مستخدم" : "مساعد"}: ${m.content.substring(0, 80)}`).join(" | ")}\n`
+        : "";
+
       const history: ChatMessage[] = [
         { role: "system", content: ACTION_SYSTEM_PROMPT },
         {
           role: "user",
           content: [
-            `المهمة: ${task.description}`,
+            `المهمة: ${task.description}${browserConvContext}`,
             ``,
             `═══ تحليل الصفحة الأولية ═══`,
             `الرابط: ${initUrl}`,
@@ -439,12 +470,42 @@ class AgentRunner extends EventEmitter {
         },
       ];
       let consecutiveFails = 0;
+      let lastStuckUrl = "";
+      let sameUrlCount = 0;
 
       for (let i = 1; i <= MAX_ITERATIONS; i++) {
         // في الخطوة الأولى استخدم التحليل الأولي، وبعدها اقرأ الصفحة من جديد
         const url     = i === 1 ? initUrl     : await browserAgent.getCurrentUrl();
         const struct  = i === 1 ? initStruct  : await browserAgent.getPageStructure();
         const content = i === 1 ? initContent : await browserAgent.getPageContent();
+
+        // ── كشف تعليق الوكيل في نفس الصفحة ────────────────────────────────
+        if (url === lastStuckUrl && i > 1) {
+          sameUrlCount++;
+        } else {
+          sameUrlCount = 0;
+          lastStuckUrl = url;
+        }
+
+        if (sameUrlCount >= 4) {
+          this.emitStep(taskId, "WARN", `⚠️ علق الوكيل في نفس الصفحة (${sameUrlCount} مرات). سيجرّب نهجاً مختلفاً...`);
+          history.push({
+            role: "user",
+            content: [
+              `⚠️ تحذير هام: لقد مررت بنفس الصفحة ${sameUrlCount} مرات متتالية بدون تقدم حقيقي.`,
+              `الرابط الحالي: ${url}`,
+              ``,
+              `يجب أن تغير نهجك الآن — اختر واحداً مما يلي:`,
+              `1. إذا كانت هناك حقول مخفية أو محملة ديناميكياً → جرّب: wait PARAM: waiting ثم أعد المحاولة`,
+              `2. إذا كانت هناك عقبة واضحة → اطلب مساعدة: ask PARAM: وصف العقبة`,
+              `3. إذا كانت المهمة مستحيلة في هذه الصفحة → أخبر المستخدم: done PARAM: وصف سبب التعذّر`,
+              `4. إذا كنت تحتاج بيانات اعتماد → اطلبها: ask PARAM: أحتاج اسم المستخدم وكلمة المرور`,
+              `لا تكرر نفس الإجراء مرة أخرى.`,
+            ].join("\n"),
+          });
+          sameUrlCount = 0;
+          await sleep(1000);
+        }
 
         // في الخطوة الأولى الرسالة مُحضَّرة مسبقاً، من الثانية فصاعداً أضف تحديثات الصفحة
         if (i > 1) {
@@ -575,7 +636,16 @@ class AgentRunner extends EventEmitter {
       }
 
       if (!finalResult) {
-        finalResult = `اكتمل التنفيذ. الموقع: ${await browserAgent.getCurrentUrl()}`;
+        const stuckUrl = await browserAgent.getCurrentUrl();
+        finalResult = `وصل الوكيل إلى الحد الأقصى من المحاولات. الموقع الأخير: ${stuckUrl}`;
+        // Record failure for self-improvement
+        memorySystem.recordFailure(
+          taskId,
+          task.description,
+          `تعذّر إنهاء مهمة المتصفح خلال ${MAX_ITERATIONS} خطوة. الموقع الأخير: ${stuckUrl}`,
+          "تكرار نفس الصفحة دون تقدم — يجب البحث عن نهج مختلف أو طلب مساعدة المستخدم مبكراً"
+        );
+        this.emitStep(taskId, "WARN", `⚠️ انتهت المحاولات (${MAX_ITERATIONS} خطوة). يوصى بتحديد المهمة بشكل أكثر دقة أو استخدام بيانات مختلفة.`);
       }
     }
 
@@ -604,8 +674,14 @@ class AgentRunner extends EventEmitter {
     const systemPrompt = SYSTEM_PROMPTS[category] || SYSTEM_PROMPTS.default;
     const steps = ["OBSERVE", "THINK", "PLAN", "ACT", "VERIFY"];
 
+    // Build context string from conversation history
+    const convHistory = task.conversationHistory || [];
+    const convContext = convHistory.length > 0
+      ? `\n\nسياق المحادثة السابقة:\n${convHistory.slice(-4).map(m => `${m.role === "user" ? "المستخدم" : "المساعد"}: ${m.content.substring(0, 150)}`).join("\n")}\n`
+      : "";
+
     const prompts: Record<string, string> = {
-      OBSERVE: `المهمة: "${task.description}"\nحلّل المتطلبات وحدد التحديات.`,
+      OBSERVE: `${convContext}المهمة: "${task.description}"\nحلّل المتطلبات وحدد التحديات.`,
       THINK:   `ما أفضل طريقة لتنفيذ المهمة بالكامل؟ فكّر بعمق.`,
       PLAN:    `ضع خطة تنفيذ مفصّلة ومرقمة لـ: "${task.description}"`,
       ACT:     `نفّذ المهمة الآن وقدّم النتيجة الكاملة والمفصّلة.`,

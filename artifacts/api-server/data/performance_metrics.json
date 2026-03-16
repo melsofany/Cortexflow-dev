@@ -1,6 +1,34 @@
 {
   "snapshots": [
     {
+      "timestamp": "2026-03-16T08:30:58.450Z",
+      "metrics": [
+        {
+          "name": "deepseek_latency_ms",
+          "value": 1748,
+          "unit": "ms",
+          "timestamp": "2026-03-16T08:30:58.438Z",
+          "status": "healthy"
+        },
+        {
+          "name": "ollama_status",
+          "value": 1,
+          "unit": "bool",
+          "timestamp": "2026-03-16T08:30:58.440Z",
+          "status": "healthy"
+        },
+        {
+          "name": "agent_service_status",
+          "value": 1,
+          "unit": "bool",
+          "timestamp": "2026-03-16T08:30:58.450Z",
+          "status": "healthy"
+        }
+      ],
+      "issues": [],
+      "score": 100
+    },
+    {
       "timestamp": "2026-03-16T08:25:58.549Z",
       "metrics": [
         {
@@ -237,6 +265,6 @@
     "browser": false,
     "agentService": true
   },
-  "lastCheck": "2026-03-16T08:25:58.549Z",
+  "lastCheck": "2026-03-16T08:30:58.450Z",
   "alerts": []
 }

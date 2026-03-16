@@ -5,6 +5,7 @@ import { taskStore, ConversationMessage } from "./lib/taskStore.js";
 import { browserAgent } from "./lib/browserAgent.js";
 import { techIntelligence } from "./lib/techIntelligence.js";
 
+const IS_CLOUD = process.env.NODE_ENV === "production" || !!process.env.RENDER;
 const rawPort = process.env["PORT"] ?? "8080";
 
 const port = Number(rawPort);
@@ -54,6 +55,7 @@ io.on("connection", (socket) => {
     ollamaAvailable: ollamaClient.isAvailable(),
     activeModel: ollamaClient.getCurrentModel(),
     browserReady: browserAgent.isReady(),
+    isCloud: IS_CLOUD,
     timestamp: new Date(),
   });
 
@@ -320,11 +322,32 @@ async function startServer() {
 
   // ── Pre-initialize browser so it's ready before first task ───────────────
   browserAgent.initialize()
-    .then((ok) => console.log(`[Server] Browser: ${ok ? "✓ Chromium ready" : "✗ not available"}`))
-    .catch(() => console.warn("[Server] Browser init warning"));
+    .then((ok) => {
+      console.log(`[Server] Browser: ${ok ? "✓ Chromium ready" : "✗ not available"}`);
+      techIntelligence.monitor.setBrowserHealth(ok);
+    })
+    .catch(() => {
+      console.warn("[Server] Browser init warning");
+      techIntelligence.monitor.setBrowserHealth(false);
+    });
 
   // ── Tech Intelligence: بحث، تطوير ذاتي، مراقبة ────────────────────────
   techIntelligence.startBackgroundJobs();
+
+  // ── Keep Agent Service alive on Render starter (spin-down prevention) ───
+  if (IS_CLOUD) {
+    const AGENT_SERVICE = process.env.AGENT_SERVICE_URL || "http://localhost:8090";
+    const { default: axios } = await import("axios");
+    setInterval(async () => {
+      try {
+        await axios.get(`${AGENT_SERVICE}/health`, { timeout: 10000 });
+        console.log("[KeepAlive] Agent Service ping OK");
+      } catch {
+        console.log("[KeepAlive] Agent Service ping failed (may be sleeping)");
+      }
+    }, 10 * 60 * 1000); // كل 10 دقائق
+    console.log("[KeepAlive] Agent Service keep-alive enabled");
+  }
 
   // ── إرسال تحديثات التقنية عبر Socket.io ───────────────────────────────
   setInterval(() => {

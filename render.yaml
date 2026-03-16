@@ -6,7 +6,8 @@ services:
     repo: https://github.com/melsofany/Cortexflow-dev
     branch: master
     buildCommand: >-
-      apt-get install -y chromium chromium-driver 2>/dev/null || apt-get install -y chromium-browser 2>/dev/null || true;
+      apt-get update -qq &&
+      (apt-get install -y chromium chromium-driver || apt-get install -y chromium-browser || true) &&
       npm install -g pnpm@10 &&
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install --frozen-lockfile &&
       (pnpm --filter @workspace/api-zod build || true) &&
@@ -40,7 +41,8 @@ services:
     repo: https://github.com/melsofany/Cortexflow-dev
     branch: master
     buildCommand: >-
-      apt-get install -y chromium-browser chromium-chromedriver 2>/dev/null || true;
+      apt-get update -qq &&
+      (apt-get install -y chromium chromium-driver || apt-get install -y chromium-browser || true) &&
       pip install -r artifacts/agent-service/requirements.txt
     startCommand: "python artifacts/agent-service/main.py"
     healthCheckPath: /health

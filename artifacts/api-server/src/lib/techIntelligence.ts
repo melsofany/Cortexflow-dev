@@ -481,6 +481,10 @@ class PerformanceMonitor {
     console.log(`[Monitor] ${level === "critical" ? "🔴" : "🟡"} ${message}`);
   }
 
+  setBrowserHealth(ok: boolean) {
+    this.data.apiHealth.browser = ok;
+  }
+
   async checkHealth(): Promise<void> {
     const metrics: PerformanceMetric[] = [];
     const issues: string[] = [];

@@ -327,16 +327,19 @@ const TechPanel = memo(({ apiBase }: { apiBase: string }) => {
               <p className="text-[10px] uppercase tracking-widest text-slate-600 mb-2">صحة الخدمات</p>
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  { label: 'DeepSeek', ok: perf.apiHealth.deepseek },
-                  { label: 'Ollama', ok: perf.apiHealth.ollama },
-                  { label: 'خدمة الوكيل', ok: perf.apiHealth.agentService },
-                  { label: 'المتصفح', ok: perf.apiHealth.browser },
-                ].map(({ label, ok }) => (
-                  <div key={label} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border ${ok ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
-                    <div className={`w-1.5 h-1.5 rounded-full ${ok ? 'bg-emerald-500' : 'bg-red-500'}`}/>
-                    <span className={`text-[10px] ${ok ? 'text-emerald-400' : 'text-red-400'}`}>{label}</span>
-                  </div>
-                ))}
+                  { label: 'DeepSeek', ok: perf.apiHealth.deepseek, cloudNA: false },
+                  { label: 'Ollama', ok: perf.apiHealth.ollama, cloudNA: true },
+                  { label: 'خدمة الوكيل', ok: perf.apiHealth.agentService, cloudNA: false },
+                  { label: 'المتصفح', ok: perf.apiHealth.browser, cloudNA: false },
+                ].map(({ label, ok, cloudNA }) => {
+                  const na = isCloud && cloudNA && !ok;
+                  return (
+                    <div key={label} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border ${ok ? 'bg-emerald-500/5 border-emerald-500/20' : na ? 'bg-slate-700/20 border-slate-700/40' : 'bg-red-500/5 border-red-500/20'}`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${ok ? 'bg-emerald-500' : na ? 'bg-slate-500' : 'bg-red-500'}`}/>
+                      <span className={`text-[10px] ${ok ? 'text-emerald-400' : na ? 'text-slate-500' : 'text-red-400'}`}>{label}{na ? ' ·N/A' : ''}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -997,6 +1000,7 @@ const App: React.FC = () => {
   const [agentActivity, setAgentActivity] = useState<AgentActivity | null>(null);
   const [liveScore, setLiveScore]         = useState<number | null>(null);
   const [liveHealth, setLiveHealth]       = useState<{deepseek:boolean;ollama:boolean;browser:boolean;agentService:boolean} | null>(null);
+  const [isCloud, setIsCloud]             = useState(false);
 
   const socketRef = useRef<Socket | null>(null);
 
@@ -1077,7 +1081,10 @@ const App: React.FC = () => {
 
     socket.on('connect', () => { setIsConnected(true); addSystem('متصل بالخادم بنجاح', 'success'); socket.emit('getStatus'); });
     socket.on('disconnect', () => { setIsConnected(false); addSystem('انقطع الاتصال', 'error'); });
-    socket.on('status', (d: { tasks: Task[] }) => setTasks(d.tasks || []));
+    socket.on('status', (d: { tasks: Task[]; isCloud?: boolean }) => {
+      setTasks(d.tasks || []);
+      if (d.isCloud !== undefined) setIsCloud(d.isCloud);
+    });
 
     socket.on('taskUpdate', (d: any) => {
       socket.emit('getStatus');

@@ -636,6 +636,20 @@ class AgentRunner extends EventEmitter {
       }
       this.emitStep(taskId, "THINK", `تحليل الصفحة:\n${initStruct}`);
 
+      // ── كشف صفحات الأمان قبل بدء الحلقة ────────────────────────────────
+      {
+        const cpHandled = await handleSecurityCheckpoint(
+          initContent,
+          initStruct,
+          (type, msg) => this.emitStep(taskId, type, msg),
+          (q) => this.waitForUserInput(taskId, q),
+        );
+        if (cpHandled) {
+          this.emitStep(taskId, "ACT", `✅ تمت معالجة نقطة التفتيش الأولية: ${cpHandled}`);
+          await browserAgent.captureNow();
+        }
+      }
+
       // Build conversation context for browser task
       const browserConvHistory = task.conversationHistory || [];
       const browserConvContext = browserConvHistory.length > 0
@@ -950,6 +964,24 @@ class AgentRunner extends EventEmitter {
           this.emitStep(taskId, "ACT", `تحذير: ${err.message}`);
         }
 
+        // ── كشف صفحات الأمان بعد كل navigate/click ──────────────────────────
+        if (action === "navigate" || action === "click" || action === "key") {
+          await sleep(800);
+          const cpContent = await browserAgent.getPageContent();
+          const cpStruct  = await browserAgent.getPageStructure();
+          const cpHandled = await handleSecurityCheckpoint(
+            cpContent,
+            cpStruct,
+            (type, msg) => this.emitStep(taskId, type, msg),
+            (q) => this.waitForUserInput(taskId, q),
+          );
+          if (cpHandled) {
+            this.emitStep(taskId, "ACT", `✅ تمت معالجة نقطة التفتيش: ${cpHandled}`);
+            history.push({ role: "user", content: `تمت معالجة صفحة أمان تلقائياً: ${cpHandled}\nتابع من الخطوة التالية في الخطة.` });
+            await browserAgent.captureNow();
+          }
+        }
+
         // ── كشف الأخطاء التلقائي بعد كل إجراء ─────────────────────────────
         await sleep(300);
         const pageErrors = await browserAgent.detectErrors();
@@ -1205,6 +1237,108 @@ function extractUrlFromText(text: string): string | null {
   if (m) return m[0];
   const domain = text.match(/\b([a-z0-9-]+\.(com|org|net|io|dev))\b/i);
   if (domain) return `https://${domain[0]}`;
+  return null;
+}
+
+// ── كشف صفحات الأمان الشائعة ومعالجتها تلقائياً ──────────────────────────
+// يُعيد: null إذا لا توجد نقطة تفتيش، أو string يصف ما تمّ
+async function handleSecurityCheckpoint(
+  content: string,
+  struct: string,
+  emitStep: (type: string, msg: string) => void,
+  waitForInput: (question: string) => Promise<string>,
+): Promise<string | null> {
+  const lc = content.toLowerCase();
+
+  // ── 1. "هل تثق في هذا الجهاز؟" (Facebook / Meta) ───────────────────────
+  const isTrustDevice =
+    lc.includes("هل تثق في هذا الجهاز") ||
+    lc.includes("do you trust this device") ||
+    lc.includes("trust this device") ||
+    lc.includes("الوثوق بهذا الجهاز");
+  if (isTrustDevice) {
+    emitStep("ACT", "🔐 كشف صفحة 'الوثوق بالجهاز' — سيتم النقر على الوثوق تلقائياً...");
+    const trustTexts = ["الوثوق بهذا الجهاز", "Trust This Device", "Yes, trust", "نعم"];
+    for (const t of trustTexts) {
+      const clicked = await browserAgent.clickByText(t);
+      if (clicked) {
+        await sleep(1500);
+        return `تمت الموافقة على الوثوق بالجهاز (${t})`;
+      }
+    }
+    // محاولة الزر الأول المتاح
+    try {
+      await browserAgent.clickBySelector("button");
+      await sleep(1500);
+      return "تمت الموافقة على الوثوق بالجهاز (زر عام)";
+    } catch { }
+  }
+
+  // ── 2. رمز التحقق / 2FA ──────────────────────────────────────────────────
+  const is2FA =
+    lc.includes("رمز التحقق") ||
+    lc.includes("verification code") ||
+    lc.includes("two-factor") ||
+    lc.includes("two factor") ||
+    lc.includes("المصادقة الثنائية") ||
+    lc.includes("enter the code");
+  if (is2FA) {
+    emitStep("WARN", "🔑 الموقع يطلب رمز تحقق (2FA) — سيطلب الوكيل الرمز من المستخدم...");
+    const code = await waitForInput("يطلب الموقع رمز التحقق الثنائي (2FA). يرجى إدخال الرمز المُرسل إلى هاتفك أو بريدك الإلكتروني:");
+    if (code.trim()) {
+      const codeField = await browserAgent.smartFill("code", code.trim()) ||
+                        await browserAgent.smartFill("verification", code.trim()) ||
+                        await browserAgent.smartFill("otp", code.trim());
+      if (codeField) {
+        await browserAgent.pressKey("Enter");
+        await sleep(2000);
+        return `تم إدخال رمز 2FA: ${code.trim()}`;
+      }
+    }
+  }
+
+  // ── 3. تأكيد الهوية / Phone verification ─────────────────────────────────
+  const isPhoneVerify =
+    lc.includes("تأكيد هويتك") ||
+    lc.includes("verify your identity") ||
+    lc.includes("تحقق من هويتك") ||
+    lc.includes("confirm your identity");
+  if (isPhoneVerify) {
+    emitStep("WARN", "📱 الموقع يطلب تأكيد الهوية — سيطلب الوكيل المساعدة من المستخدم...");
+    const answer = await waitForInput("الموقع يطلب تأكيد الهوية. هل تريد المتابعة عبر الهاتف أم البريد الإلكتروني؟ أو أدخل الرمز المطلوب إذا كان لديك:");
+    if (answer.trim()) return `تعليمات المستخدم: ${answer}`;
+  }
+
+  // ── 4. "متابعة بوصفك ..." (Facebook Continue As) ─────────────────────────
+  const isContinueAs = lc.includes("متابعة بوصفك") || lc.includes("continue as");
+  if (isContinueAs) {
+    emitStep("ACT", "👤 كشف 'متابعة بوصفك...' — النقر تلقائياً...");
+    const continueBtnTexts = ["متابعة بوصفك", "Continue as", "Continue"];
+    for (const t of continueBtnTexts) {
+      if (await browserAgent.clickByText(t)) {
+        await sleep(1500);
+        return `تمت المتابعة (${t})`;
+      }
+    }
+  }
+
+  // ── 5. قبول ملفات تعريف الارتباط (Cookie consent) ───────────────────────
+  const isCookie =
+    lc.includes("قبول ملفات") ||
+    lc.includes("accept all cookies") ||
+    lc.includes("accept cookies") ||
+    lc.includes("قبول جميع ملفات");
+  if (isCookie) {
+    emitStep("ACT", "🍪 كشف موافقة الكوكيز — قبول تلقائي...");
+    const acceptTexts = ["قبول الجميع", "قبول الكل", "Accept All", "Accept all cookies", "Allow all", "Agree"];
+    for (const t of acceptTexts) {
+      if (await browserAgent.clickByText(t)) {
+        await sleep(1000);
+        return `تم قبول ملفات تعريف الارتباط (${t})`;
+      }
+    }
+  }
+
   return null;
 }
 

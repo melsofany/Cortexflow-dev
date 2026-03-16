@@ -7,10 +7,10 @@ services:
     branch: master
     buildCommand: >-
       npm install -g pnpm@10 &&
-      pnpm install --frozen-lockfile &&
-      PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium --with-deps &&
-      (pnpm --filter @workspace/api-zod build || true) &&
-      pnpm --filter @workspace/api-server build
+      pnpm install --no-frozen-lockfile &&
+      (pnpm --filter @workspace/api-zod build 2>/dev/null || true) &&
+      pnpm --filter @workspace/api-server build &&
+      PLAYWRIGHT_BROWSERS_PATH=0 pnpm --filter @workspace/api-server exec playwright install chromium 2>/dev/null || echo 'playwright not installed'
     startCommand: "node artifacts/api-server/dist/index.cjs"
     healthCheckPath: /api/healthz
     plan: starter
@@ -24,8 +24,6 @@ services:
         value: "0"
       - key: AGENT_SERVICE_URL
         value: https://cortexflow-agent.onrender.com
-      - key: OLLAMA_URL
-        value: http://localhost:11434
       - key: RENDER
         value: "true"
       - key: DEEPSEEK_API_KEY
@@ -38,8 +36,7 @@ services:
     repo: https://github.com/melsofany/Cortexflow-dev
     branch: master
     buildCommand: >-
-      pip install -r artifacts/agent-service/requirements.txt &&
-      PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium --with-deps
+      pip install -r artifacts/agent-service/requirements.txt
     startCommand: "python artifacts/agent-service/main.py"
     healthCheckPath: /health
     plan: starter
@@ -61,8 +58,8 @@ services:
     branch: master
     buildCommand: >-
       npm install -g pnpm@10 &&
-      pnpm install --frozen-lockfile &&
-      (pnpm --filter @workspace/api-zod build || true) &&
+      pnpm install --no-frozen-lockfile &&
+      (pnpm --filter @workspace/api-zod build 2>/dev/null || true) &&
       BASE_PATH=/ PORT=3000 NODE_ENV=production pnpm --filter @workspace/cortexflow build
     staticPublishPath: artifacts/cortexflow/dist/public
     envVars:

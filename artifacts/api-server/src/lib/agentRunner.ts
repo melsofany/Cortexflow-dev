@@ -468,7 +468,7 @@ class AgentRunner extends EventEmitter {
           content: [
             `المهمة: ${task.description}${browserConvContext}`,
             pageHasNoInputs && isLoginTask
-              ? `\n💡 تنبيه: الصفحة الحالية لا تحتوي على نموذج إدخال. ابدأ بالنقر على زر تسجيل الدخول أو انتقل مباشرة إلى https://www.facebook.com/login\n`
+              ? `\n💡 تنبيه: الصفحة الحالية لا تحتوي على نموذج إدخال. ابدأ بالنقر على زر تسجيل الدخول أو انتقل مباشرة إلى صفحة تسجيل الدخول للموقع المستهدف: ${targetUrl || "الموقع المطلوب"}\n`
               : "",
             `═══ تحليل الصفحة الأولية ═══`,
             `الرابط: ${initUrl}`,
@@ -593,7 +593,7 @@ class AgentRunner extends EventEmitter {
             content: [
               `⚠️ لقد استخدمت "${action}" ${consecutiveWaits} مرات متتالية بدون نتيجة.`,
               hasNoInputs
-                ? `الصفحة ليس بها حقول إدخال. يجب أن تنقر على زر "Log In" أو "تسجيل الدخول" أو تنتقل مباشرة إلى: navigate PARAM: https://www.facebook.com/login`
+                ? `الصفحة ليس بها حقول إدخال. يجب أن تنقر على زر "Log In" أو "تسجيل الدخول" أو تنتقل مباشرة إلى صفحة تسجيل الدخول على الموقع المستهدف: navigate PARAM: ${targetUrl || url}`
                 : `يجب اتخاذ إجراء مختلف تماماً بناءً على هيكل الصفحة الحالي:`,
               ``,
               freshStruct.substring(0, 600),
@@ -926,7 +926,9 @@ function extractUrl(text: string): string | null {
     "whatsapp business": "https://business.whatsapp.com/", "واتساب بيزنس": "https://business.whatsapp.com/",
   };
   const lower = text.toLowerCase();
-  for (const [key, url] of Object.entries(siteMap)) {
+  // Sort by key length descending so longer/more specific keys match first
+  const sortedEntries = Object.entries(siteMap).sort((a, b) => b[0].length - a[0].length);
+  for (const [key, url] of sortedEntries) {
     if (lower.includes(key.toLowerCase())) return url;
   }
   const urlMatch = text.match(/https?:\/\/[^\s]+/i);

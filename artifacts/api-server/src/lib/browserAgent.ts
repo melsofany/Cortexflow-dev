@@ -128,53 +128,82 @@ class BrowserAgent extends EventEmitter {
   async smartFill(hint: string, value: string): Promise<boolean> {
     if (!this.page) return false;
 
-    const tryFill = async (loc: import("playwright").Locator): Promise<boolean> => {
+    // البحث في كل الإطارات (الرئيسي + iframes)
+    const frames = [this.page.mainFrame(), ...this.page.frames().filter(f => f !== this.page!.mainFrame())];
+
+    for (const frame of frames) {
+      const tryFill = async (loc: import("playwright").Locator): Promise<boolean> => {
+        try {
+          await loc.first().waitFor({ state: "visible", timeout: 2000 });
+          await loc.first().fill(value);
+          return true;
+        } catch {
+          // محاولة click+type كبديل
+          try {
+            await loc.first().click({ timeout: 1500 });
+            await loc.first().fill(value);
+            return true;
+          } catch { return false; }
+        }
+      };
+
+      // استخدام locator من الإطار المحدد
+      const fLoc = (sel: string) => frame.locator(sel);
+      const byLabel = frame.getByLabel(hint, { exact: false });
+
+      // 1. Playwright getByLabel
+      if (await tryFill(byLabel)) return true;
+      // 2. placeholder
+      if (await tryFill(fLoc(`[placeholder*="${hint}"]`))) return true;
+      // 3. name يطابق تماماً
+      if (await tryFill(fLoc(`[name="${hint}"]`))) return true;
+      // 4. name يحتوي على النص
+      if (await tryFill(fLoc(`[name*="${hint}"]`))) return true;
+      // 5. id يطابق
+      if (await tryFill(fLoc(`[id="${hint}"]`))) return true;
+      // 6. aria-label
+      if (await tryFill(fLoc(`[aria-label*="${hint}"]`))) return true;
+
+      // 7. بحث شامل عبر evaluate مع React-safe setter
       try {
-        await loc.first().waitFor({ state: "visible", timeout: 3000 });
-        await loc.first().fill(value);
-        return true;
-      } catch { return false; }
-    };
-
-    // 1. Playwright getByLabel (يبحث في <label> المرتبطة)
-    if (await tryFill(this.page.getByLabel(hint, { exact: false }))) return true;
-
-    // 2. placeholder يحتوي على النص
-    if (await tryFill(this.page.locator(`[placeholder*="${hint}"]`))) return true;
-
-    // 3. name يطابق تماماً
-    if (await tryFill(this.page.locator(`[name="${hint}"]`))) return true;
-
-    // 4. name يحتوي على النص
-    if (await tryFill(this.page.locator(`[name*="${hint}"]`))) return true;
-
-    // 5. id يطابق
-    if (await tryFill(this.page.locator(`[id="${hint}"]`))) return true;
-
-    // 6. aria-label يحتوي على النص
-    if (await tryFill(this.page.locator(`[aria-label*="${hint}"]`))) return true;
-
-    // 7. بحث شامل عبر evaluate: يربط كل input بتسميته ثم يملأه
-    try {
-      const found = await this.page.evaluate(({ hint, value }) => {
-        const h = hint.toLowerCase();
-        for (const inp of Array.from(document.querySelectorAll<HTMLInputElement>("input, textarea"))) {
-          const label = inp.labels?.[0]?.textContent?.toLowerCase() || "";
-          const ph    = (inp.placeholder || "").toLowerCase();
-          const nm    = (inp.name        || "").toLowerCase();
-          const id    = (inp.id          || "").toLowerCase();
-          if (label.includes(h) || ph.includes(h) || nm.includes(h) || id.includes(h)) {
-            inp.focus();
-            inp.value = value;
+        const found = await frame.evaluate(({ hint, value }) => {
+          const h = hint.toLowerCase();
+          const ns = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set ||
+                     Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+          const reactSet = (inp: HTMLInputElement | HTMLTextAreaElement, val: string) => {
+            if (ns) ns.call(inp, val); else inp.value = val;
             inp.dispatchEvent(new Event("input",  { bubbles: true }));
             inp.dispatchEvent(new Event("change", { bubbles: true }));
-            return true;
+            // React Fiber
+            try {
+              const fk = Object.keys(inp).find(k => k.startsWith("__reactFiber") || k.startsWith("__reactInternalInstance"));
+              if (fk) {
+                let fiber = (inp as any)[fk];
+                while (fiber) {
+                  const props = fiber.memoizedProps || fiber.pendingProps;
+                  if (props?.onChange) { props.onChange({ target: inp, currentTarget: inp, bubbles: true, preventDefault: () => {}, stopPropagation: () => {}, persist: () => {} }); break; }
+                  fiber = fiber.return;
+                }
+              }
+            } catch (_) {}
+          };
+          for (const inp of Array.from(document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input:not([type='submit']):not([type='button']):not([type='checkbox']):not([type='radio']), textarea"))) {
+            const label = inp.labels?.[0]?.textContent?.toLowerCase() || "";
+            const ph    = (inp.placeholder || "").toLowerCase();
+            const nm    = (inp.name        || "").toLowerCase();
+            const id    = (inp.id          || "").toLowerCase();
+            const ariaLbl = (inp.getAttribute("aria-label") || "").toLowerCase();
+            if (label.includes(h) || ph.includes(h) || nm.includes(h) || id.includes(h) || ariaLbl.includes(h)) {
+              inp.focus();
+              reactSet(inp, value);
+              return true;
+            }
           }
-        }
-        return false;
-      }, { hint, value });
-      if (found) return true;
-    } catch { /* تجاهل */ }
+          return false;
+        }, { hint, value });
+        if (found) return true;
+      } catch { /* تجاهل */ }
+    }
 
     return false;
   }

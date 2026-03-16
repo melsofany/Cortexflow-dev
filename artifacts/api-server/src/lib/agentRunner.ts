@@ -519,9 +519,18 @@ class AgentRunner extends EventEmitter {
         }
 
         try {
-          await executeAction(action, param);
+          const actionResult = await executeAction(action, param);
           // لقطة فورية بعد كل إجراء للمزامنة مع التفكير
           await browserAgent.captureNow();
+          // إبلاغ النموذج بفشل fill/select لكي يحاول بطريقة مختلفة
+          if (actionResult?.success === false && (action === "fill" || action === "select")) {
+            const errMsg = actionResult.error || `لم يُعثر على الحقل "${param}"`;
+            this.emitStep(taskId, "WARN", `⚠️ فشل ${action}: ${errMsg}`);
+            history.push({
+              role: "user",
+              content: `تحذير: فشل إجراء "${action}" للحقل "${param}"\n${errMsg}\nحاول استخدام اسم مختلف للحقل أو استخدم type بعد click على الحقل.`,
+            });
+          }
         } catch (err: any) {
           this.emitStep(taskId, "ACT", `تحذير: ${err.message}`);
         }
@@ -628,6 +637,8 @@ function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
 function parseAction(text: string): { action: string; param: string } | null {
   if (!text) return null;
+
+  // الصيغة الكاملة الصحيحة: ACTION: xxx | PARAM: yyy
   const m = text.match(/ACTION:\s*(\w+)\s*\|\s*PARAM:\s*(.+)/i);
   if (m) {
     const action = m[1].toLowerCase().trim();
@@ -638,6 +649,33 @@ function parseAction(text: string): { action: string; param: string } | null {
     }
     return { action, param };
   }
+
+  // صيغة بديلة يستخدمها النموذج أحياناً: "fill PARAM: field=val" أو "navigate PARAM: url"
+  const m2 = text.match(/^\s*(navigate|click|fill|select|ask|type|key|scroll|wait|done)\s+PARAM:\s*(.+)/im);
+  if (m2) {
+    const action = m2[1].toLowerCase().trim();
+    let param = m2[2].trim().split("\n")[0].trim();
+    if (action === "navigate") {
+      param = cleanUrl(param);
+      if (!param || isBlank(param)) return null;
+    }
+    return { action, param };
+  }
+
+  // صيغة مباشرة جداً من النموذج: "fill firstname=Ahmed"
+  const m3 = text.match(/^\s*(navigate|click|fill|select|ask|type|key|scroll|wait|done)\s+([^\n]+)/im);
+  if (m3) {
+    const action = m3[1].toLowerCase().trim();
+    let param = m3[2].trim().split("\n")[0].trim();
+    // تجاهل إذا كانت نفس كلمة الأمر (مثلاً "fill fill=...")
+    if (param.toLowerCase().startsWith(action)) return null;
+    if (action === "navigate") {
+      param = cleanUrl(param);
+      if (!param || isBlank(param)) return null;
+    }
+    return { action, param };
+  }
+
   if (/\b(task complete|task done|completed|done)\b/i.test(text)) {
     return { action: "done", param: text.substring(0, 100) };
   }
@@ -664,51 +702,58 @@ function extractUrlFromText(text: string): string | null {
   return null;
 }
 
-async function executeAction(action: string, param: string): Promise<void> {
+async function executeAction(
+  action: string,
+  param: string,
+): Promise<{ success: boolean; error?: string } | undefined> {
   switch (action) {
     case "navigate":
       await browserAgent.navigate(param);
       await browserAgent.captureNow();
-      break;
-    case "click":
-      await browserAgent.clickByText(param);
-      break;
+      return { success: true };
+    case "click": {
+      const clicked = await browserAgent.clickByText(param);
+      if (!clicked) return { success: false, error: `لم يُعثر على عنصر بالنص: "${param}"` };
+      return { success: true };
+    }
     case "fill": {
       const eqIdx = param.indexOf("=");
-      if (eqIdx === -1) break;
+      if (eqIdx === -1) return { success: false, error: `صيغة خاطئة — يجب أن تكون: اسم_الحقل=القيمة` };
       const field = param.substring(0, eqIdx).trim();
       const value = param.substring(eqIdx + 1).trim();
-      // استخدام smartFill أولاً (يدعم التسميات العربية والإنجليزية)
       const filled = await browserAgent.smartFill(field, value);
       if (!filled) {
         console.log(`[fill] لم يُعثر على الحقل: "${field}" = "${value}"`);
+        return { success: false, error: `لم يُعثر على الحقل "${field}" في الصفحة. راجع هيكل الصفحة لمعرفة الأسماء الصحيحة.` };
       }
-      break;
+      return { success: true };
     }
     case "select": {
       const eqIdx2 = param.indexOf("=");
-      if (eqIdx2 === -1) break;
-      // إزالة أرقام الخطوات الزائدة مثل "birthday_month:13"
+      if (eqIdx2 === -1) return { success: false, error: `صيغة خاطئة — يجب أن تكون: اسم_القائمة=الخيار` };
       const selField = param.substring(0, eqIdx2).trim().replace(/[:\s]\d+$/, "");
       const selValue = param.substring(eqIdx2 + 1).trim();
       const selected = await browserAgent.smartSelect(selField, selValue);
       if (!selected) {
         console.log(`[select] لم يُعثر على القائمة: "${selField}" = "${selValue}"`);
+        return { success: false, error: `لم يُعثر على القائمة "${selField}" أو الخيار "${selValue}".` };
       }
-      break;
+      return { success: true };
     }
     case "type":
       await browserAgent.type(param);
-      break;
+      return { success: true };
     case "key":
       await browserAgent.pressKey(param);
-      break;
+      return { success: true };
     case "scroll":
       await browserAgent.scroll(0, param === "up" ? -400 : 400);
-      break;
+      return { success: true };
     case "wait":
       await sleep(2000);
-      break;
+      return { success: true };
+    default:
+      return undefined;
   }
 }
 

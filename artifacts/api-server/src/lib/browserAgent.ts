@@ -183,48 +183,113 @@ class BrowserAgent extends EventEmitter {
   async smartSelect(hint: string, value: string): Promise<boolean> {
     if (!this.page) return false;
 
-    const trySelect = async (selector: string): Promise<boolean> => {
+    // دالة React-safe للضغط على القيمة في عنصر select
+    const reactSet = async (sel: any, optValue: string): Promise<void> => {
+      await this.page!.evaluate(({ selector, val }) => {
+        const el = document.querySelector<HTMLSelectElement>(selector);
+        if (!el) return;
+        // Native setter لإطلاق React synthetic events
+        const nativeSetter = Object.getOwnPropertyDescriptor(
+          window.HTMLSelectElement.prototype, "value"
+        )?.set;
+        if (nativeSetter) nativeSetter.call(el, val);
+        else el.value = val;
+        el.dispatchEvent(new Event("input",  { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      }, { selector: sel, val: optValue });
+    };
+
+    // استراتيجية 1: Playwright selectOption مباشرة
+    const tryPlaywright = async (selector: string): Promise<boolean> => {
       try {
         const loc = this.page!.locator(selector).first();
-        await loc.waitFor({ state: "visible", timeout: 3000 });
-        // حاول بالقيمة النصية أولاً، ثم بالنص الظاهر، ثم بالرقم
-        try { await loc.selectOption({ label: value }); return true; } catch { /* تجاهل */ }
-        try { await loc.selectOption({ value: value }); return true; } catch { /* تجاهل */ }
-        try { await loc.selectOption({ index: parseInt(value) }); return true; } catch { /* تجاهل */ }
+        await loc.waitFor({ state: "attached", timeout: 3000 });
+        try { await loc.selectOption({ label: value },   { timeout: 2000 }); return true; } catch {}
+        try { await loc.selectOption({ value: value },   { timeout: 2000 }); return true; } catch {}
+        // بحث بمطابقة جزئية في النص
+        const opts = await loc.locator("option").all();
+        for (const o of opts) {
+          const txt = (await o.textContent() || "").trim();
+          const val = await o.getAttribute("value") || "";
+          if (txt.includes(value) || value.includes(txt) ||
+              val === value || val.toLowerCase() === value.toLowerCase()) {
+            try { await loc.selectOption({ value: val }, { timeout: 2000 }); return true; } catch {}
+            // React-safe fallback
+            try {
+              await reactSet(selector, val);
+              return true;
+            } catch {}
+          }
+        }
         return false;
       } catch { return false; }
     };
 
-    if (await trySelect(`select[name="${hint}"]`)) return true;
-    if (await trySelect(`select[name*="${hint}"]`)) return true;
-    if (await trySelect(`select[id="${hint}"]`)) return true;
+    if (await tryPlaywright(`select[name="${hint}"]`)) return true;
+    if (await tryPlaywright(`select[name*="${hint}"]`)) return true;
+    if (await tryPlaywright(`select[id="${hint}"]`))   return true;
+    if (await tryPlaywright(`select[id*="${hint}"]`))  return true;
 
-    // بحث عبر التسمية
+    // استراتيجية 2: بحث شامل في كل عناصر select بالصفحة
     try {
       const found = await this.page.evaluate(({ hint, value }) => {
         const h = hint.toLowerCase();
+        const v = value.toLowerCase();
+
+        // React-safe setter
+        const reactSetVal = (el: HTMLSelectElement, val: string) => {
+          const nativeSetter = Object.getOwnPropertyDescriptor(
+            window.HTMLSelectElement.prototype, "value"
+          )?.set;
+          if (nativeSetter) nativeSetter.call(el, val);
+          else el.value = val;
+          el.dispatchEvent(new Event("input",  { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        };
+
         for (const sel of Array.from(document.querySelectorAll<HTMLSelectElement>("select"))) {
-          const label = sel.labels?.[0]?.textContent?.toLowerCase() || "";
-          const nm    = (sel.name || "").toLowerCase();
-          const id    = (sel.id   || "").toLowerCase();
-          if (label.includes(h) || nm.includes(h) || id.includes(h)) {
-            // حاول المطابقة بالنص أو القيمة
-            const opt = Array.from(sel.options).find(o =>
-              o.text.toLowerCase().includes(value.toLowerCase()) ||
-              o.value.toLowerCase().includes(value.toLowerCase()) ||
-              o.value === value
-            );
-            if (opt) {
-              sel.value = opt.value;
-              sel.dispatchEvent(new Event("change", { bubbles: true }));
-              return true;
-            }
+          const nm  = (sel.name || "").toLowerCase();
+          const id  = (sel.id   || "").toLowerCase();
+          const lbl = (sel.labels?.[0]?.textContent || "").toLowerCase();
+          if (!nm.includes(h) && !id.includes(h) && !lbl.includes(h)) continue;
+
+          // ابحث عن الخيار الأنسب
+          const opts = Array.from(sel.options);
+          let match = opts.find(o => o.text.toLowerCase() === v || o.value.toLowerCase() === v);
+          if (!match) match = opts.find(o => o.text.toLowerCase().includes(v) || v.includes(o.text.toLowerCase().trim()));
+          if (!match) match = opts.find(o => o.value === value);
+
+          if (match) {
+            reactSetVal(sel, match.value);
+            return true;
           }
         }
         return false;
       }, { hint, value });
       if (found) return true;
-    } catch { /* تجاهل */ }
+    } catch {}
+
+    // استراتيجية 3: آخر محاولة — أول select في الصفحة يطابق القيمة
+    try {
+      const found = await this.page.evaluate(({ value }) => {
+        const v = value.toLowerCase();
+        const reactSetVal = (el: HTMLSelectElement, val: string) => {
+          const s = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value")?.set;
+          if (s) s.call(el, val); else el.value = val;
+          el.dispatchEvent(new Event("input",  { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        };
+        for (const sel of Array.from(document.querySelectorAll<HTMLSelectElement>("select"))) {
+          const opts = Array.from(sel.options);
+          const match = opts.find(o =>
+            o.text.toLowerCase().includes(v) || v.includes(o.text.toLowerCase().trim())
+          );
+          if (match) { reactSetVal(sel, match.value); return true; }
+        }
+        return false;
+      }, { value });
+      if (found) return true;
+    } catch {}
 
     return false;
   }

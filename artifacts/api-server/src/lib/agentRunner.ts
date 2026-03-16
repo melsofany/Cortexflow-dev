@@ -573,7 +573,8 @@ async function executeAction(action: string, param: string): Promise<void> {
     case "select": {
       const eqIdx2 = param.indexOf("=");
       if (eqIdx2 === -1) break;
-      const selField = param.substring(0, eqIdx2).trim();
+      // إزالة أرقام الخطوات الزائدة مثل "birthday_month:13"
+      const selField = param.substring(0, eqIdx2).trim().replace(/[:\s]\d+$/, "");
       const selValue = param.substring(eqIdx2 + 1).trim();
       const selected = await browserAgent.smartSelect(selField, selValue);
       if (!selected) {

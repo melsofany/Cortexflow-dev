@@ -16,6 +16,10 @@ import { contextManager } from "./contextManager.js";
 import { toolOrchestrator } from "./toolOrchestrator.js";
 import { verificationAgent } from "./verificationAgent.js";
 import { episodicMemory } from "./episodicMemory.js";
+import { codeActEngine } from "./codeActEngine.js";
+import { wideResearch } from "./wideResearch.js";
+import { mcpTools } from "./mcpTools.js";
+import { gaiaEvaluator } from "./gaiaEvaluator.js";
 import {
   analyzeTaskComplexity,
   buildKnowledgeAudit,
@@ -381,6 +385,116 @@ class AgentRunner extends EventEmitter {
     // المسار المتقدم: DAG + Parallel + ReAct
     // ══════════════════════════════════════════════════════════════════════
 
+    // ── CodeAct: للمهام البرمجية المعقدة ──────────────────────────────────
+    const isComplexCodingTask = /كود|اكتب برنامج|طوّر|انشئ تطبيق|script|program|algorithm|خوارزمية|دالة|function/i.test(task.description) && task.description.length > 80;
+
+    if (isComplexCodingTask && category === "code") {
+      this.emitStep(taskId, "THINK", "⚡ **CodeAct Engine** — توليد كود Python قابل للتنفيذ كإجراءات ذكية...");
+
+      const codeActCallLLM = async (msgs: Array<{ role: string; content: string }>, maxTok = 1200) => {
+        return smartChatFn(
+          msgs as Array<{ role: "system" | "user" | "assistant"; content: string }>,
+          { temperature: 0.3, max_tokens: maxTok },
+          "CODEACT",
+        );
+      };
+
+      try {
+        const { finalAnswer, session } = await codeActEngine.runSession(
+          taskId,
+          enrichedDescription,
+          codeActCallLLM,
+          (action, result, iter) => {
+            this.emitStep(taskId, "ACT", `🐍 [CodeAct #${iter + 1}] ${action.thought.substring(0, 120)}`);
+            if (result.success) {
+              this.emitStep(taskId, "OBSERVE", `✅ مخرجات الكود:\n\`\`\`\n${result.output.substring(0, 500)}\n\`\`\``);
+            } else {
+              this.emitStep(taskId, "OBSERVE", `❌ خطأ: ${result.error?.substring(0, 200)}`);
+            }
+            this.emit("todoUpdate", { taskId, todoList: session.todoList });
+          },
+        );
+
+        const todoReport = codeActEngine.formatTodoList(session.todoList);
+        if (todoReport) this.emitStep(taskId, "PLAN", todoReport);
+
+        const duration = Date.now() - start;
+        try {
+          await gaiaEvaluator.evaluateTask(
+            taskId, task.description, "code", finalAnswer,
+            ["code_execute", "codeact"], ["CodeActEngine"],
+            session.iteration, duration, codeActCallLLM,
+          ).then(eval_ => {
+            this.emitStep(taskId, "VERIFY", gaiaEvaluator.formatEvaluationSummary(eval_));
+          });
+        } catch {}
+
+        taskStore.updateTask(taskId, { status: "completed", result: finalAnswer });
+        this.emit("taskSuccess", { taskId, result: finalAnswer });
+        return;
+      } catch (codeActErr: any) {
+        this.emitStep(taskId, "THINK", `⚠️ CodeAct فشل، الرجوع للمسار الكلاسيكي: ${codeActErr.message}`);
+      }
+    }
+
+    // ── Wide Research: للمهام البحثية الموسّعة ────────────────────────────
+    const isLargeResearchTask = category === "research" && await wideResearch.shouldUseWideResearch(task.description);
+
+    if (isLargeResearchTask) {
+      this.emitStep(taskId, "PLANNING", "🔬 **Wide Research System** — توزيع البحث على وكلاء متوازية...");
+
+      const wideCallLLM = async (msgs: Array<{ role: string; content: string }>, maxTok = 1500) => {
+        return smartChatFn(
+          msgs as Array<{ role: "system" | "user" | "assistant"; content: string }>,
+          { temperature: 0.4, max_tokens: maxTok },
+          "WIDE_RESEARCH",
+        );
+      };
+
+      try {
+        const resResult = await wideResearch.run(
+          task.description,
+          wideCallLLM,
+          (event, data) => {
+            if (event === "plan_ready") {
+              const d = data as { subTasks: Array<{ id: string; title: string; angle: string }>; totalAgents: number };
+              this.emitStep(taskId, "PLAN",
+                `🔬 خطة البحث الموسّع: ${d.totalAgents} وكيل متوازٍ\n` +
+                d.subTasks.map((t) => `⏳ [${t.angle}] ${t.title}`).join("\n")
+              );
+            } else if (event === "task_update") {
+              const d = data as { taskId: string; status: string };
+              if (d.status === "done") this.emitStep(taskId, "OBSERVE", `✅ محور مكتمل`);
+              else if (d.status === "running") this.emitStep(taskId, "ACT", `🔄 وكيل يبحث...`);
+            } else if (event === "synthesizing") {
+              this.emitStep(taskId, "OBSERVE", "📝 وكيل التوليف يدمج النتائج...");
+            }
+          },
+        );
+
+        this.emitStep(taskId, "VERIFY",
+          `✅ **البحث الموسّع اكتمل** — ${resResult.agentsUsed} وكيل | تغطية: ${resResult.coverageScore}%`
+        );
+
+        const duration = Date.now() - start;
+        try {
+          await gaiaEvaluator.evaluateTask(
+            taskId, task.description, "research", resResult.synthesizedReport,
+            ["wide_research"], resResult.subResults.map(r => r.task.assignedTo),
+            resResult.agentsUsed, duration, wideCallLLM,
+          ).then(eval_ => {
+            this.emitStep(taskId, "VERIFY", gaiaEvaluator.formatEvaluationSummary(eval_));
+          });
+        } catch {}
+
+        taskStore.updateTask(taskId, { status: "completed", result: resResult.synthesizedReport });
+        this.emit("taskSuccess", { taskId, result: resResult.synthesizedReport });
+        return;
+      } catch (wrErr: any) {
+        this.emitStep(taskId, "THINK", `⚠️ Wide Research فشل، الرجوع للمسار الكلاسيكي: ${wrErr.message}`);
+      }
+    }
+
     // ── الذاكرة الإبستيمية: استرجاع محادثات سابقة ذات صلة ───────────────────
     const memoryHint = episodicMemory.buildContextualHint(task.description);
     if (memoryHint) {
@@ -605,10 +719,47 @@ class AgentRunner extends EventEmitter {
       console.warn("[EpisodicMemory] فشل تخزين الحلقة:", memErr);
     }
 
+    // ── تقييم GAIA تلقائي بعد كل مهمة DAG ─────────────────────────────────
+    try {
+      const toolsUsedInTask = Array.from(dagPlan.nodes.values()).map(n => n.tool || n.agent).filter(Boolean);
+      const agentsUsedInTask = [...new Set(Array.from(dagPlan.nodes.values()).map(n => n.agent).filter(Boolean))];
+
+      const gaiaCallLLM = async (msgs: Array<{ role: string; content: string }>, maxTok = 600) => {
+        return smartChatFn(
+          msgs as Array<{ role: "system" | "user" | "assistant"; content: string }>,
+          { temperature: 0.2, max_tokens: maxTok },
+          "GAIA_EVAL",
+        );
+      };
+
+      gaiaEvaluator.evaluateTask(
+        taskId, task.description, category, outputToReturn,
+        toolsUsedInTask, agentsUsedInTask,
+        dagPlan.totalNodes, duration, gaiaCallLLM,
+      ).then(eval_ => {
+        if (eval_.grade === "S" || eval_.grade === "A") {
+          this.emitStep(taskId, "VERIFY", gaiaEvaluator.formatEvaluationSummary(eval_));
+        }
+      }).catch(() => {});
+    } catch {}
+
+    // ── MCP: حفظ نتيجة المهمة في الذاكرة الدلالية ─────────────────────────
+    try {
+      mcpTools.execute({
+        toolName: "memory_store",
+        input: {
+          key: `task_${taskId}`,
+          value: outputToReturn.substring(0, 500),
+          category,
+        },
+        requestId: `mem_${taskId}`,
+      }).catch(() => {});
+    } catch {}
+
     taskStore.updateTask(taskId, { status: "completed", result: outputToReturn });
     taskStore.addLog({
       taskId,
-      agentType: "DAG+Parallel+Verify",
+      agentType: "DAG+Parallel+Verify+GAIA",
       action: "task_complete",
       output: outputToReturn.substring(0, 300),
       durationMs: duration,

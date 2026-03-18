@@ -56,7 +56,7 @@ interface AgentActivity {
   timestamp: Date;
 }
 
-type ActiveTab = 'chat' | 'browser' | 'plan' | 'tech';
+type ActiveTab = 'chat' | 'browser' | 'plan' | 'tech' | 'advanced';
 interface InputRequest { taskId: string; question: string; }
 
 interface TechEntry { topic: string; summary: string; keyItems: string[]; relevance: string; updatedAt: string; }
@@ -487,6 +487,276 @@ const TechPanel = memo(({ apiBase, isCloud = false, liveHealth }: { apiBase: str
             )}
           </>
         )}
+      </div>
+    </div>
+  );
+});
+
+// ─── AdvancedPanel ────────────────────────────────────────────────────────────
+interface TodoItem { id: string; title: string; status: string; priority: string; notes?: string; }
+interface TodoList  { items: TodoItem[]; completionRate: number; lastUpdated: string; }
+interface GaiaEval  { taskId: string; goal: string; overallScore: number; grade: string; metrics: any; category: string; timestamp: string; }
+interface GaiaReport { totalEvaluations: number; averageScore: number; systemHealth: string; gradeDistribution: Record<string,number>; recommendations: string[]; trendLast7Days: number[]; }
+
+const AdvancedPanel = memo(({ apiBase, todoList }: { apiBase: string; todoList: TodoList | null }) => {
+  const API = apiBase ? `${apiBase}/api` : '/api';
+  const [activeSection, setActiveSection] = useState<'todo'|'gaia'|'mcp'>('gaia');
+  const [gaiaReport, setGaiaReport]       = useState<GaiaReport | null>(null);
+  const [gaiaEvals, setGaiaEvals]         = useState<GaiaEval[]>([]);
+  const [mcpTools, setMcpTools]           = useState<any[]>([]);
+  const [loadingGaia, setLoadingGaia]     = useState(false);
+
+  useEffect(() => {
+    if (activeSection === 'gaia') loadGaia();
+    else if (activeSection === 'mcp') loadMcp();
+  }, [activeSection]);
+
+  const loadGaia = async () => {
+    setLoadingGaia(true);
+    try {
+      const [rep, evs] = await Promise.all([
+        fetch(`${API}/gaia/report`).then(r => r.json()),
+        fetch(`${API}/gaia/evaluations?limit=10`).then(r => r.json()),
+      ]);
+      setGaiaReport(rep);
+      setGaiaEvals(evs.evaluations || []);
+    } catch {} finally { setLoadingGaia(false); }
+  };
+
+  const loadMcp = async () => {
+    try {
+      const d = await fetch(`${API}/mcp/tools`).then(r => r.json());
+      setMcpTools(d.tools || []);
+    } catch {}
+  };
+
+  const gradeColor = (g: string) => {
+    if (g === 'S') return 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30';
+    if (g === 'A') return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30';
+    if (g === 'B') return 'text-blue-400 bg-blue-500/10 border-blue-500/30';
+    if (g === 'C') return 'text-orange-400 bg-orange-500/10 border-orange-500/30';
+    return 'text-red-400 bg-red-500/10 border-red-500/30';
+  };
+
+  const healthColor = (h: string) => h === 'excellent' ? 'text-emerald-400' : h === 'good' ? 'text-blue-400' : h === 'fair' ? 'text-yellow-400' : 'text-red-400';
+  const healthLabel = (h: string) => h === 'excellent' ? 'ممتاز' : h === 'good' ? 'جيد' : h === 'fair' ? 'مقبول' : 'ضعيف';
+
+  const todoItems = todoList?.items || [];
+
+  return (
+    <div className="flex flex-col h-full bg-[#0c0c16]">
+      <div className="px-4 py-3 border-b border-slate-800/50 flex-shrink-0">
+        <div className="flex items-center gap-2 mb-3">
+          <Sparkles size={14} className="text-violet-400"/>
+          <span className="text-xs font-bold text-slate-200">الأنظمة المتقدمة</span>
+        </div>
+        <div className="flex gap-1">
+          {(['gaia','todo','mcp'] as const).map(s => (
+            <button key={s} onClick={() => setActiveSection(s)}
+              className={`flex-1 py-1 rounded-lg text-[10px] font-semibold transition-all ${
+                activeSection === s ? 'bg-violet-600/30 text-violet-300 border border-violet-500/30' : 'text-slate-500 hover:text-slate-300'
+              }`}>
+              {s === 'gaia' ? '📊 التقييم' : s === 'todo' ? '📋 المهام' : '🔧 الأدوات'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+
+        {/* ── GAIA Evaluator ── */}
+        {activeSection === 'gaia' && (
+          <>
+            {loadingGaia ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 size={18} className="animate-spin text-violet-400"/>
+              </div>
+            ) : gaiaReport ? (
+              <>
+                <div className="rounded-xl bg-slate-900/60 border border-slate-800/50 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">نتيجة النظام</span>
+                    <button onClick={loadGaia} className="text-slate-600 hover:text-slate-400 transition-colors">
+                      <RefreshCw size={11}/>
+                    </button>
+                  </div>
+                  <div className="flex items-baseline gap-2 mb-1">
+                    <span className="text-3xl font-black text-white">{gaiaReport.averageScore}</span>
+                    <span className="text-slate-500 text-xs">/100</span>
+                    <span className={`text-sm font-bold ${healthColor(gaiaReport.systemHealth)}`}>
+                      {healthLabel(gaiaReport.systemHealth)}
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-800 rounded-full h-1.5 mb-3">
+                    <div className="h-1.5 rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all"
+                      style={{ width: `${gaiaReport.averageScore}%` }}/>
+                  </div>
+                  <div className="text-[10px] text-slate-500">{gaiaReport.totalEvaluations} مهمة مُقيَّمة</div>
+                </div>
+
+                {/* Grade Distribution */}
+                {Object.keys(gaiaReport.gradeDistribution).length > 0 && (
+                  <div className="rounded-xl bg-slate-900/60 border border-slate-800/50 p-3">
+                    <p className="text-[10px] text-slate-400 font-semibold mb-2">توزيع الدرجات</p>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {Object.entries(gaiaReport.gradeDistribution).map(([g, count]) => (
+                        <div key={g} className={`px-2 py-1 rounded-lg border text-[10px] font-bold ${gradeColor(g)}`}>
+                          {g}: {count}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Trend */}
+                {gaiaReport.trendLast7Days.some(v => v > 0) && (
+                  <div className="rounded-xl bg-slate-900/60 border border-slate-800/50 p-3">
+                    <p className="text-[10px] text-slate-400 font-semibold mb-2">أداء آخر 7 أيام</p>
+                    <div className="flex items-end gap-1 h-10">
+                      {gaiaReport.trendLast7Days.map((v, i) => (
+                        <div key={i} className="flex-1 flex flex-col items-center justify-end">
+                          <div className="w-full rounded-sm bg-violet-500/40 transition-all"
+                            style={{ height: `${v ? (v / 100) * 40 : 2}px`, minHeight: '2px' }}/>
+                          <span className="text-[8px] text-slate-700 mt-0.5">{v || ''}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recommendations */}
+                {gaiaReport.recommendations.length > 0 && (
+                  <div className="rounded-xl bg-slate-900/60 border border-slate-800/50 p-3">
+                    <p className="text-[10px] text-slate-400 font-semibold mb-2">التوصيات</p>
+                    {gaiaReport.recommendations.map((r, i) => (
+                      <p key={i} className="text-[10px] text-slate-400 mb-1">💡 {r}</p>
+                    ))}
+                  </div>
+                )}
+
+                {/* Recent evaluations */}
+                {gaiaEvals.length > 0 && (
+                  <div className="rounded-xl bg-slate-900/60 border border-slate-800/50 p-3">
+                    <p className="text-[10px] text-slate-400 font-semibold mb-2">آخر التقييمات</p>
+                    <div className="space-y-2">
+                      {gaiaEvals.slice(0,5).map(ev => (
+                        <div key={ev.taskId} className="flex items-center gap-2">
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${gradeColor(ev.grade)}`}>{ev.grade}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] text-slate-300 truncate">{ev.goal}</p>
+                            <p className="text-[9px] text-slate-600">{ev.category} | {ev.overallScore}/100</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-10">
+                <Activity size={28} className="text-slate-700 mx-auto mb-3"/>
+                <p className="text-xs text-slate-600">لا توجد بيانات تقييم بعد</p>
+                <p className="text-[10px] text-slate-700 mt-1">يبدأ التقييم تلقائياً مع كل مهمة</p>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── CodeAct Todo List ── */}
+        {activeSection === 'todo' && (
+          <>
+            {todoItems.length === 0 ? (
+              <div className="text-center py-10">
+                <ListChecks size={28} className="text-slate-700 mx-auto mb-3"/>
+                <p className="text-xs text-slate-600">قائمة المهام فارغة</p>
+                <p className="text-[10px] text-slate-700 mt-1">تظهر هنا مهام CodeAct عند التنفيذ</p>
+              </div>
+            ) : (
+              <>
+                <div className="rounded-xl bg-slate-900/60 border border-slate-800/50 p-3 mb-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] text-slate-400 font-bold">التقدم</span>
+                    <span className="text-[10px] font-bold text-violet-400">{todoList?.completionRate || 0}%</span>
+                  </div>
+                  <div className="w-full bg-slate-800 rounded-full h-1.5">
+                    <div className="h-1.5 rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all"
+                      style={{ width: `${todoList?.completionRate || 0}%` }}/>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  {todoItems.map(item => {
+                    const icon = item.status === 'done' ? '✅' : item.status === 'in_progress' ? '🔄' : item.status === 'failed' ? '❌' : '⬜';
+                    const clr = item.status === 'done' ? 'border-emerald-500/20 bg-emerald-500/5'
+                      : item.status === 'in_progress' ? 'border-violet-500/20 bg-violet-500/5 animate-pulse'
+                      : item.status === 'failed' ? 'border-red-500/20 bg-red-500/5'
+                      : 'border-slate-800/50 bg-slate-900/40';
+                    return (
+                      <div key={item.id} className={`rounded-xl border p-2.5 transition-all ${clr}`}>
+                        <div className="flex items-start gap-2">
+                          <span className="text-sm leading-none mt-0.5">{icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-[11px] font-medium leading-snug ${
+                              item.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-200'
+                            }`}>{item.title}</p>
+                            {item.notes && (
+                              <p className="text-[9px] text-slate-600 mt-0.5 truncate">{item.notes}</p>
+                            )}
+                          </div>
+                          <span className={`text-[9px] px-1 py-0.5 rounded border flex-shrink-0 ${
+                            item.priority === 'high' ? 'text-red-400 border-red-500/20' :
+                            item.priority === 'medium' ? 'text-yellow-400 border-yellow-500/20' :
+                            'text-slate-500 border-slate-700'
+                          }`}>{item.priority === 'high' ? 'عالي' : item.priority === 'medium' ? 'متوسط' : 'منخفض'}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {/* ── MCP Tools ── */}
+        {activeSection === 'mcp' && (
+          <>
+            <div className="rounded-xl bg-slate-900/60 border border-slate-800/50 p-3 mb-2">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs font-bold text-slate-200">أدوات MCP</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/20">{mcpTools.length}</span>
+                <button onClick={loadMcp} className="ml-auto text-slate-600 hover:text-slate-400 transition-colors">
+                  <RefreshCw size={11}/>
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-500">Model Context Protocol — معيار الأدوات القياسي</p>
+            </div>
+            {mcpTools.length === 0 ? (
+              <div className="text-center py-6">
+                <Loader2 size={18} className="animate-spin text-violet-400 mx-auto mb-2"/>
+                <p className="text-[10px] text-slate-600">جارٍ التحميل...</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {mcpTools.map((tool: any) => (
+                  <div key={tool.name} className="rounded-xl bg-slate-900/40 border border-slate-800/40 p-2.5">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[10px] font-bold text-violet-300 font-mono">{tool.name}</span>
+                      <span className={`text-[9px] px-1 py-0.5 rounded border ml-auto ${
+                        tool.category === 'filesystem' ? 'text-blue-400 border-blue-500/20' :
+                        tool.category === 'web' ? 'text-cyan-400 border-cyan-500/20' :
+                        tool.category === 'memory' ? 'text-pink-400 border-pink-500/20' :
+                        tool.category === 'computation' ? 'text-amber-400 border-amber-500/20' :
+                        'text-slate-400 border-slate-700'
+                      }`}>{tool.category}</span>
+                    </div>
+                    <p className="text-[9px] text-slate-500 leading-relaxed">{tool.description}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
       </div>
     </div>
   );
@@ -1031,6 +1301,8 @@ const App: React.FC = () => {
   const [sidebarOpen, setSidebarOpen]     = useState(false);
   const [showPlan, setShowPlan]           = useState(true);
   const [showTech, setShowTech]           = useState(false);
+  const [showAdvanced, setShowAdvanced]   = useState(false);
+  const [activeTodoList, setActiveTodoList] = useState<TodoList | null>(null);
   const [browserMode, setBrowserMode]     = useState<'normal'|'expanded'|'hidden'>('normal');
   const [isAgentBusy, setIsAgentBusy]     = useState(false);
   const [pendingInputRequest, setPendingInputRequest] = useState<InputRequest | null>(null);
@@ -1276,6 +1548,12 @@ const App: React.FC = () => {
       if (d.apiHealth) setLiveHealth(d.apiHealth);
     });
 
+    socket.on('todoUpdate', (d: { taskId?: string; todoList: TodoList }) => {
+      if (d.todoList) {
+        setActiveTodoList(d.todoList);
+      }
+    });
+
     return () => { socket.disconnect(); };
   }, [addSystem, addAgent, addThinking]);
 
@@ -1361,10 +1639,11 @@ const App: React.FC = () => {
   );
 
   const TABS = [
-    { id: 'chat'    as ActiveTab, label: 'المحادثة', icon: Bot      },
-    { id: 'plan'    as ActiveTab, label: 'الخطة',    icon: ListChecks, badge: !!currentPlan },
-    { id: 'browser' as ActiveTab, label: 'المتصفح',  icon: Monitor,  badge: isAgentBusy && browserHasFrame },
-    { id: 'tech'    as ActiveTab, label: 'الذكاء',   icon: FlaskConical },
+    { id: 'chat'     as ActiveTab, label: 'المحادثة', icon: Bot      },
+    { id: 'plan'     as ActiveTab, label: 'الخطة',    icon: ListChecks, badge: !!currentPlan },
+    { id: 'browser'  as ActiveTab, label: 'المتصفح',  icon: Monitor,  badge: isAgentBusy && browserHasFrame },
+    { id: 'tech'     as ActiveTab, label: 'الذكاء',   icon: FlaskConical },
+    { id: 'advanced' as ActiveTab, label: 'متقدم',    icon: Sparkles, badge: !!(activeTodoList && activeTodoList.completionRate > 0 && activeTodoList.completionRate < 100) },
   ];
 
   return (
@@ -1468,6 +1747,25 @@ const App: React.FC = () => {
                 }`}>{liveScore}</span>
               )}
             </button>
+
+            {/* Toggle Advanced Systems panel */}
+            <button
+              onClick={() => setShowAdvanced(a => !a)}
+              title={showAdvanced ? 'إخفاء الأنظمة المتقدمة' : 'إظهار الأنظمة المتقدمة'}
+              className={`p-2 rounded-lg transition-all text-xs flex items-center gap-1.5 ${
+                showAdvanced
+                  ? 'text-indigo-400 bg-indigo-500/15 hover:bg-indigo-500/25'
+                  : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              <Sparkles size={15}/>
+              <span className="text-[11px] font-medium">{showAdvanced ? 'أخفِ المتقدمة' : 'متقدم'}</span>
+              {activeTodoList && activeTodoList.completionRate > 0 && activeTodoList.completionRate < 100 && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400">
+                  {activeTodoList.completionRate}%
+                </span>
+              )}
+            </button>
           </div>
 
           {/* New Chat Button */}
@@ -1534,6 +1832,13 @@ const App: React.FC = () => {
             {showTech && (
               <div className="w-[280px] border-l border-slate-800/50 flex flex-col min-h-0 overflow-hidden transition-all duration-300 flex-shrink-0">
                 <TechPanel apiBase={(import.meta.env.VITE_API_URL as string) || ''} isCloud={isCloud} liveHealth={liveHealth}/>
+              </div>
+            )}
+
+            {/* Advanced Systems column — toggled by showAdvanced */}
+            {showAdvanced && (
+              <div className="w-[270px] border-l border-slate-800/50 flex flex-col min-h-0 overflow-hidden transition-all duration-300 flex-shrink-0">
+                <AdvancedPanel apiBase={(import.meta.env.VITE_API_URL as string) || ''} todoList={activeTodoList}/>
               </div>
             )}
           </div>

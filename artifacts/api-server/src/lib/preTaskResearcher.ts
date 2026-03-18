@@ -42,31 +42,101 @@ export interface RealityCheckItem {
   mustBeVisible: string;
 }
 
-export function analyzeTaskComplexity(taskDescription: string): TaskComplexityScore {
+export function analyzeTaskComplexity(
+  taskDescription: string,
+): TaskComplexityScore {
   const desc = taskDescription.toLowerCase();
   let score = 1;
   const reasons: string[] = [];
 
-  const signals: Array<{ keywords: string[]; points: number; reason: string }> = [
-    { keywords: ["تسجيل دخول", "login", "sign in", "بريد", "كلمة مرور", "password"], points: 2, reason: "تتطلب مصادقة" },
-    { keywords: ["أنشئ", "create", "register", "سجّل", "إنشاء"], points: 1, reason: "تتطلب إنشاء شيء" },
-    { keywords: ["api", "مفتاح", "token", "access token", "webhook"], points: 2, reason: "تتطلب بيانات API" },
-    { keywords: ["meta", "facebook", "ميتا", "فيسبوك"], points: 2, reason: "منصة Meta — تحقق متعدد المراحل" },
-    { keywords: ["google", "جوجل", "gmail"], points: 2, reason: "Google — 2FA وحماية متقدمة" },
-    { keywords: ["whatsapp", "واتساب", "business"], points: 2, reason: "WhatsApp Business — متطلبات تحقق خاصة" },
-    { keywords: ["captcha", "recaptcha", "تحقق"], points: 2, reason: "قد تحتاج تحقق بشري" },
-    { keywords: ["رقم هاتف", "phone number", "otp", "sms"], points: 2, reason: "تحقق برقم الهاتف" },
-    { keywords: ["دفع", "payment", "credit card", "billing"], points: 3, reason: "بيانات دفع مطلوبة" },
-    { keywords: ["واتساب أعمال", "whatsapp business api", "waba"], points: 3, reason: "WhatsApp Business API — متطلبات تجارية معقدة" },
-    { keywords: ["ثم", "بعد ذلك", "ثم انتقل", "خطوات متعددة"], points: 1, reason: "مهمة متعددة الخطوات" },
-    { keywords: ["انشاء تطبيق", "create app", "new app"], points: 1, reason: "إنشاء تطبيق على منصة" },
-    { keywords: ["instagram", "انستقرام"], points: 2, reason: "Instagram — قيود على الأتمتة" },
-    { keywords: ["twitter", "x.com", "تويتر"], points: 2, reason: "Twitter/X — قيود على الأتمتة" },
-    { keywords: ["linkedin", "لينكد إن"], points: 2, reason: "LinkedIn — حماية متقدمة" },
-  ];
+  const signals: Array<{ keywords: string[]; points: number; reason: string }> =
+    [
+      {
+        keywords: [
+          "تسجيل دخول",
+          "login",
+          "sign in",
+          "بريد",
+          "كلمة مرور",
+          "password",
+        ],
+        points: 2,
+        reason: "تتطلب مصادقة",
+      },
+      {
+        keywords: ["أنشئ", "create", "register", "سجّل", "إنشاء"],
+        points: 1,
+        reason: "تتطلب إنشاء شيء",
+      },
+      {
+        keywords: ["api", "مفتاح", "token", "access token", "webhook"],
+        points: 2,
+        reason: "تتطلب بيانات API",
+      },
+      {
+        keywords: ["meta", "facebook", "ميتا", "فيسبوك"],
+        points: 2,
+        reason: "منصة Meta — تحقق متعدد المراحل",
+      },
+      {
+        keywords: ["google", "جوجل", "gmail"],
+        points: 2,
+        reason: "Google — 2FA وحماية متقدمة",
+      },
+      {
+        keywords: ["whatsapp", "واتساب", "business"],
+        points: 2,
+        reason: "WhatsApp Business — متطلبات تحقق خاصة",
+      },
+      {
+        keywords: ["captcha", "recaptcha", "تحقق"],
+        points: 2,
+        reason: "قد تحتاج تحقق بشري",
+      },
+      {
+        keywords: ["رقم هاتف", "phone number", "otp", "sms"],
+        points: 2,
+        reason: "تحقق برقم الهاتف",
+      },
+      {
+        keywords: ["دفع", "payment", "credit card", "billing"],
+        points: 3,
+        reason: "بيانات دفع مطلوبة",
+      },
+      {
+        keywords: ["واتساب أعمال", "whatsapp business api", "waba"],
+        points: 3,
+        reason: "WhatsApp Business API — متطلبات تجارية معقدة",
+      },
+      {
+        keywords: ["ثم", "بعد ذلك", "ثم انتقل", "خطوات متعددة"],
+        points: 1,
+        reason: "مهمة متعددة الخطوات",
+      },
+      {
+        keywords: ["انشاء تطبيق", "create app", "new app"],
+        points: 1,
+        reason: "إنشاء تطبيق على منصة",
+      },
+      {
+        keywords: ["instagram", "انستقرام"],
+        points: 2,
+        reason: "Instagram — قيود على الأتمتة",
+      },
+      {
+        keywords: ["twitter", "x.com", "تويتر"],
+        points: 2,
+        reason: "Twitter/X — قيود على الأتمتة",
+      },
+      {
+        keywords: ["linkedin", "لينكد إن"],
+        points: 2,
+        reason: "LinkedIn — حماية متقدمة",
+      },
+    ];
 
   for (const s of signals) {
-    if (s.keywords.some(k => desc.includes(k))) {
+    if (s.keywords.some((k) => desc.includes(k))) {
       score += s.points;
       reasons.push(s.reason);
     }
@@ -78,45 +148,86 @@ export function analyzeTaskComplexity(taskDescription: string): TaskComplexitySc
   if (score >= 6 && score < 8) category = "complex";
   if (score >= 8) category = "multi-step-auth";
 
-  return { score, isComplex: score >= 6, reasons: [...new Set(reasons)], category };
+  return {
+    score,
+    isComplex: score >= 6,
+    reasons: [...new Set(reasons)],
+    category,
+  };
 }
 
-export function buildKnowledgeAudit(taskDescription: string, complexity: TaskComplexityScore): KnowledgeAudit {
+export function buildKnowledgeAudit(
+  taskDescription: string,
+  complexity: TaskComplexityScore,
+): KnowledgeAudit {
   const desc = taskDescription.toLowerCase();
-  const audit: KnowledgeAudit = { known: [], assumed: [], unknown: [], prerequisites: [], knownFailurePoints: [] };
+  const audit: KnowledgeAudit = {
+    known: [],
+    assumed: [],
+    unknown: [],
+    prerequisites: [],
+    knownFailurePoints: [],
+  };
 
   audit.known.push("الوكيل يتحكم في متصفح حقيقي");
   audit.known.push("كل إجراء مبني على ما يظهر على الشاشة فعلاً");
 
-  if (desc.includes("meta") || desc.includes("ميتا") || desc.includes("facebook") || desc.includes("فيسبوك")) {
-    audit.known.push("Meta Developers تتطلب حساب Facebook نشطاً مربوطاً بحساب Business");
+  if (
+    desc.includes("meta") ||
+    desc.includes("ميتا") ||
+    desc.includes("facebook") ||
+    desc.includes("فيسبوك")
+  ) {
+    audit.known.push(
+      "Meta Developers تتطلب حساب Facebook نشطاً مربوطاً بحساب Business",
+    );
     audit.assumed.push("المستخدم لديه حساب Facebook مفعّل ومعتمد كمطوّر");
     audit.unknown.push("بيانات الدخول (البريد + كلمة المرور)");
     audit.prerequisites.push("حساب Facebook نشط ومعتمد");
     audit.prerequisites.push("حساب Meta Business Manager موجود مسبقاً");
-    audit.knownFailurePoints.push("طلب إعادة إدخال كلمة المرور عند الحساسية الأمنية");
-    audit.knownFailurePoints.push("قيود على إنشاء تطبيقات جديدة للحسابات الجديدة");
+    audit.knownFailurePoints.push(
+      "طلب إعادة إدخال كلمة المرور عند الحساسية الأمنية",
+    );
+    audit.knownFailurePoints.push(
+      "قيود على إنشاء تطبيقات جديدة للحسابات الجديدة",
+    );
     audit.knownFailurePoints.push("CAPTCHA أو تحقق بالهاتف يظهر فجأة");
   }
 
-  if (desc.includes("whatsapp") || desc.includes("واتساب") || desc.includes("waba")) {
-    audit.known.push("WhatsApp Business API يتطلب حساب WhatsApp Business مسجلاً رسمياً");
+  if (
+    desc.includes("whatsapp") ||
+    desc.includes("واتساب") ||
+    desc.includes("waba")
+  ) {
+    audit.known.push(
+      "WhatsApp Business API يتطلب حساب WhatsApp Business مسجلاً رسمياً",
+    );
     audit.assumed.push("المستخدم لديه رقم هاتف يدعم WhatsApp Business");
     audit.unknown.push("رقم الهاتف التجاري المراد ربطه");
     audit.prerequisites.push("رقم هاتف نشط يمكن استخدامه مع WhatsApp Business");
-    audit.prerequisites.push("حساب WhatsApp Business Manager مربوط بـ Meta Business");
+    audit.prerequisites.push(
+      "حساب WhatsApp Business Manager مربوط بـ Meta Business",
+    );
     audit.knownFailurePoints.push("الأرقام الشخصية لا تعمل مع Business API");
-    audit.knownFailurePoints.push("صفحة App Publish Status تظهر ولا تمنع العمل — تجاهلها وتابع");
+    audit.knownFailurePoints.push(
+      "صفحة App Publish Status تظهر ولا تمنع العمل — تجاهلها وتابع",
+    );
     audit.knownFailurePoints.push("التحقق من رقم الهاتف يستغرق وقتاً");
   }
 
   if (desc.includes("api") || desc.includes("مفتاح")) {
     audit.assumed.push("الـ API سيُتاح فور إنشاء التطبيق");
-    audit.knownFailurePoints.push("بعض الـ APIs تحتاج مراجعة من المنصة قبل التفعيل");
+    audit.knownFailurePoints.push(
+      "بعض الـ APIs تحتاج مراجعة من المنصة قبل التفعيل",
+    );
     audit.knownFailurePoints.push("الـ Access Token يتغير وله صلاحية محدودة");
   }
 
-  if (desc.includes("google") || desc.includes("gmail") || desc.includes("جوجل")) {
+  if (
+    desc.includes("google") ||
+    desc.includes("gmail") ||
+    desc.includes("جوجل")
+  ) {
     audit.known.push("Google تستخدم 2FA بشكل شبه إلزامي");
     audit.unknown.push("بيانات الدخول لحساب Google");
     audit.prerequisites.push("حساب Google مفعّل");
@@ -126,30 +237,63 @@ export function buildKnowledgeAudit(taskDescription: string, complexity: TaskCom
 
   if (complexity.score >= 6) {
     audit.assumed.push("كل الخطوات ستكتمل بنجاح بالترتيب");
-    audit.knownFailurePoints.push("الفشل في خطوة مبكرة يُعطّل كل الخطوات اللاحقة");
+    audit.knownFailurePoints.push(
+      "الفشل في خطوة مبكرة يُعطّل كل الخطوات اللاحقة",
+    );
   }
 
   return audit;
 }
 
-export function buildRealityChecklist(taskDescription: string): RealityChecklist {
+export function buildRealityChecklist(
+  taskDescription: string,
+): RealityChecklist {
   const desc = taskDescription.toLowerCase();
   const items: RealityCheckItem[] = [];
 
-  if ((desc.includes("meta") || desc.includes("facebook") || desc.includes("ميتا")) && (desc.includes("تطبيق") || desc.includes("app"))) {
-    items.push({ criterion: "تم إنشاء التطبيق", howToVerify: "App ID يظهر في صفحة الإعدادات", mustBeVisible: "App ID: [أرقام] في developers.facebook.com/apps/" });
+  if (
+    (desc.includes("meta") ||
+      desc.includes("facebook") ||
+      desc.includes("ميتا")) &&
+    (desc.includes("تطبيق") || desc.includes("app"))
+  ) {
+    items.push({
+      criterion: "تم إنشاء التطبيق",
+      howToVerify: "App ID يظهر في صفحة الإعدادات",
+      mustBeVisible: "App ID: [أرقام] في developers.facebook.com/apps/",
+    });
   }
 
   if (desc.includes("whatsapp") || desc.includes("واتساب")) {
-    items.push({ criterion: "تم إضافة منتج WhatsApp", howToVerify: "WhatsApp في القائمة الجانبية اليسرى", mustBeVisible: "WhatsApp في sidebar داخل صفحة التطبيق" });
-    items.push({ criterion: "ظهر رمز الوصول (Access Token)", howToVerify: "نص يبدأ بـ EAA أو حقل Access Token", mustBeVisible: "Temporary Access Token أو حقل token" });
+    items.push({
+      criterion: "تم إضافة منتج WhatsApp",
+      howToVerify: "WhatsApp في القائمة الجانبية اليسرى",
+      mustBeVisible: "WhatsApp في sidebar داخل صفحة التطبيق",
+    });
+    items.push({
+      criterion: "ظهر رمز الوصول (Access Token)",
+      howToVerify: "نص يبدأ بـ EAA أو حقل Access Token",
+      mustBeVisible: "Temporary Access Token أو حقل token",
+    });
   }
 
-  if (desc.includes("تسجيل دخول") || desc.includes("login") || desc.includes("sign in")) {
-    items.push({ criterion: "تم تسجيل الدخول", howToVerify: "اسم المستخدم أو صورته في الصفحة", mustBeVisible: "اسم الحساب أو أيقونة الحساب في الشريط العلوي" });
+  if (
+    desc.includes("تسجيل دخول") ||
+    desc.includes("login") ||
+    desc.includes("sign in")
+  ) {
+    items.push({
+      criterion: "تم تسجيل الدخول",
+      howToVerify: "اسم المستخدم أو صورته في الصفحة",
+      mustBeVisible: "اسم الحساب أو أيقونة الحساب في الشريط العلوي",
+    });
   }
 
-  items.push({ criterion: "الصفحة الحالية تُثبت اكتمال المهمة", howToVerify: "URL ومحتوى الصفحة يتطابقان مع هدف المهمة", mustBeVisible: "رسالة نجاح أو عنصر يدل على اكتمال ما طُلب" });
+  items.push({
+    criterion: "الصفحة الحالية تُثبت اكتمال المهمة",
+    howToVerify: "URL ومحتوى الصفحة يتطابقان مع هدف المهمة",
+    mustBeVisible: "رسالة نجاح أو عنصر يدل على اكتمال ما طُلب",
+  });
 
   return { items };
 }
@@ -172,7 +316,14 @@ export interface PlatformPlaybook {
 const PLATFORM_PLAYBOOKS: PlatformPlaybook[] = [
   {
     platform: "Meta Developers (WhatsApp Business API)",
-    matchKeywords: ["meta", "ميتا", "facebook", "whatsapp business api", "واتساب أعمال", "developers.facebook"],
+    matchKeywords: [
+      "meta",
+      "ميتا",
+      "facebook",
+      "whatsapp business api",
+      "واتساب أعمال",
+      "developers.facebook",
+    ],
     startUrl: "https://developers.facebook.com/",
     knownFlow: [
       "1. الذهاب إلى developers.facebook.com والتأكد من تسجيل الدخول",
@@ -187,10 +338,26 @@ const PLATFORM_PLAYBOOKS: PlatformPlaybook[] = [
       "10. ستجد Temporary Access Token في صفحة إعداد WhatsApp",
     ],
     commonErrors: [
-      { error: "App Publish Status", meaning: "تنبيه بأن التطبيق غير منشور — طبيعي جداً للتطبيقات الجديدة", fix: "تجاهله واستمر في الخطوات" },
-      { error: "This account has been suspended", meaning: "الحساب موقوف", fix: "أبلغ المستخدم — لا يمكن المتابعة" },
-      { error: "You need a Business Portfolio", meaning: "يحتاج حساب Business Manager", fix: "الذهاب إلى business.facebook.com أولاً لإنشاء حساب Business" },
-      { error: "Invalid redirect_uri", meaning: "خطأ في إعداد OAuth", fix: "تجاهله في مرحلة الإنشاء الأولى" },
+      {
+        error: "App Publish Status",
+        meaning: "تنبيه بأن التطبيق غير منشور — طبيعي جداً للتطبيقات الجديدة",
+        fix: "تجاهله واستمر في الخطوات",
+      },
+      {
+        error: "This account has been suspended",
+        meaning: "الحساب موقوف",
+        fix: "أبلغ المستخدم — لا يمكن المتابعة",
+      },
+      {
+        error: "You need a Business Portfolio",
+        meaning: "يحتاج حساب Business Manager",
+        fix: "الذهاب إلى business.facebook.com أولاً لإنشاء حساب Business",
+      },
+      {
+        error: "Invalid redirect_uri",
+        meaning: "خطأ في إعداد OAuth",
+        fix: "تجاهله في مرحلة الإنشاء الأولى",
+      },
     ],
     cannotAutomate: [
       "التحقق عبر رمز SMS يُرسل للهاتف",
@@ -211,7 +378,13 @@ const PLATFORM_PLAYBOOKS: PlatformPlaybook[] = [
   },
   {
     platform: "Google Cloud / Google APIs",
-    matchKeywords: ["google cloud", "google api", "google developer", "console.cloud.google", "جوجل كلاود"],
+    matchKeywords: [
+      "google cloud",
+      "google api",
+      "google developer",
+      "console.cloud.google",
+      "جوجل كلاود",
+    ],
     startUrl: "https://console.cloud.google.com/",
     knownFlow: [
       "1. الذهاب إلى console.cloud.google.com",
@@ -223,18 +396,23 @@ const PLATFORM_PLAYBOOKS: PlatformPlaybook[] = [
       "7. اختيار نوع المفتاح (API Key / OAuth / Service Account)",
     ],
     commonErrors: [
-      { error: "Billing account required", meaning: "يحتاج حساب فوترة", fix: "أبلغ المستخدم — يجب إضافة بطاقة ائتمانية" },
-      { error: "Quota exceeded", meaning: "تجاوز حد الاستخدام", fix: "أبلغ المستخدم لترقية الخطة" },
+      {
+        error: "Billing account required",
+        meaning: "يحتاج حساب فوترة",
+        fix: "أبلغ المستخدم — يجب إضافة بطاقة ائتمانية",
+      },
+      {
+        error: "Quota exceeded",
+        meaning: "تجاوز حد الاستخدام",
+        fix: "أبلغ المستخدم لترقية الخطة",
+      },
     ],
     cannotAutomate: [
       "إضافة بطاقة ائتمانية لحساب Billing",
       "التحقق برمز SMS",
       "إدخال كلمة مرور Google",
     ],
-    requiredFromUser: [
-      "بيانات تسجيل الدخول لـ Google",
-      "اسم المشروع",
-    ],
+    requiredFromUser: ["بيانات تسجيل الدخول لـ Google", "اسم المشروع"],
     completionSignals: [
       "ظهور Project ID في الصفحة",
       "ظهور API Key أو رمز Credentials",
@@ -252,17 +430,19 @@ const PLATFORM_PLAYBOOKS: PlatformPlaybook[] = [
       "5. النقر على 'Create repository'",
     ],
     commonErrors: [
-      { error: "Repository already exists", meaning: "اسم المستودع محجوز", fix: "استخدم اسماً مختلفاً" },
-      { error: "Two-factor authentication required", meaning: "تحقق ثنائي مطلوب", fix: "أبلغ المستخدم للتحقق من هاتفه" },
+      {
+        error: "Repository already exists",
+        meaning: "اسم المستودع محجوز",
+        fix: "استخدم اسماً مختلفاً",
+      },
+      {
+        error: "Two-factor authentication required",
+        meaning: "تحقق ثنائي مطلوب",
+        fix: "أبلغ المستخدم للتحقق من هاتفه",
+      },
     ],
-    cannotAutomate: [
-      "التحقق ثنائي (2FA)",
-      "إدخال كلمة مرور GitHub",
-    ],
-    requiredFromUser: [
-      "بيانات تسجيل الدخول",
-      "اسم المستودع",
-    ],
+    cannotAutomate: ["التحقق ثنائي (2FA)", "إدخال كلمة مرور GitHub"],
+    requiredFromUser: ["بيانات تسجيل الدخول", "اسم المستودع"],
     completionSignals: [
       "ظهور الـ URL الجديد: github.com/username/repo-name",
       "ظهور صفحة المستودع الفارغة مع زر 'Add a README'",
@@ -279,26 +459,27 @@ const PLATFORM_PLAYBOOKS: PlatformPlaybook[] = [
       "4. التبديل إلى حساب Business أو Creator",
     ],
     commonErrors: [
-      { error: "We detected unusual activity", meaning: "حماية أمنية مفعّلة", fix: "أبلغ المستخدم — يحتاج تأكيداً يدوياً" },
+      {
+        error: "We detected unusual activity",
+        meaning: "حماية أمنية مفعّلة",
+        fix: "أبلغ المستخدم — يحتاج تأكيداً يدوياً",
+      },
     ],
-    cannotAutomate: [
-      "تأكيد الهوية عبر صورة",
-      "كلمة المرور",
-    ],
+    cannotAutomate: ["تأكيد الهوية عبر صورة", "كلمة المرور"],
     requiredFromUser: ["بيانات تسجيل الدخول"],
-    completionSignals: [
-      "ظهور 'Business Account' في الإعدادات",
-    ],
+    completionSignals: ["ظهور 'Business Account' في الإعدادات"],
   },
 ];
 
 /**
  * العثور على Playbook المناسب للمهمة
  */
-export function findPlatformPlaybook(taskDescription: string): PlatformPlaybook | null {
+export function findPlatformPlaybook(
+  taskDescription: string,
+): PlatformPlaybook | null {
   const desc = taskDescription.toLowerCase();
   for (const pb of PLATFORM_PLAYBOOKS) {
-    if (pb.matchKeywords.some(k => desc.includes(k))) {
+    if (pb.matchKeywords.some((k) => desc.includes(k))) {
       return pb;
     }
   }
@@ -316,13 +497,15 @@ export function buildPlatformAwarePrompt(playbook: PlatformPlaybook): string {
     playbook.knownFlow.join("\n"),
     ``,
     `### الأخطاء الشائعة وتفسيرها:`,
-    playbook.commonErrors.map(e => `- "${e.error}" → ${e.meaning} → الحل: ${e.fix}`).join("\n"),
+    playbook.commonErrors
+      .map((e) => `- "${e.error}" → ${e.meaning} → الحل: ${e.fix}`)
+      .join("\n"),
     ``,
     `### لا يمكن أتمتته (يحتاج المستخدم):`,
-    playbook.cannotAutomate.map(c => `- ${c}`).join("\n"),
+    playbook.cannotAutomate.map((c) => `- ${c}`).join("\n"),
     ``,
     `### علامات الاكتمال الحقيقي:`,
-    playbook.completionSignals.map(s => `✓ ${s}`).join("\n"),
+    playbook.completionSignals.map((s) => `✓ ${s}`).join("\n"),
   ].join("\n");
 }
 
@@ -386,16 +569,23 @@ export class SubGoalTracker {
   }
 
   isAllDone(): boolean {
-    return this.goals.every(g => g.status === "done");
+    return this.goals.every((g) => g.status === "done");
   }
 
   getProgressReport(): string {
-    const done = this.goals.filter(g => g.status === "done").length;
+    const done = this.goals.filter((g) => g.status === "done").length;
     const total = this.goals.length;
     const lines = [
       `## تقرير التقدم: ${done}/${total} أهداف مكتملة`,
-      ...this.goals.map(g => {
-        const icon = g.status === "done" ? "✅" : g.status === "in_progress" ? "▶️" : g.status === "failed" ? "❌" : "⏳";
+      ...this.goals.map((g) => {
+        const icon =
+          g.status === "done"
+            ? "✅"
+            : g.status === "in_progress"
+              ? "▶️"
+              : g.status === "failed"
+                ? "❌"
+                : "⏳";
         return `${icon} [${g.id}] ${g.title}${g.evidence ? ` (${g.evidence.substring(0, 60)})` : ""}`;
       }),
     ];
@@ -408,8 +598,12 @@ export class SubGoalTracker {
     return [
       `### الهدف الفرعي الحالي [${g.id}/${this.goals.length}]: ${g.title}`,
       `المحاولات حتى الآن: ${g.attemptCount}`,
-      g.attemptCount >= 4 ? `⚠️ تحذير: هذا الهدف يستغرق وقتاً طويلاً — فكّر في نهج مختلف` : "",
-    ].filter(Boolean).join("\n");
+      g.attemptCount >= 4
+        ? `⚠️ تحذير: هذا الهدف يستغرق وقتاً طويلاً — فكّر في نهج مختلف`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
   }
 }
 
@@ -476,12 +670,24 @@ ACTION: click | PARAM: Create App Button  ← هذا مخترع إذا لم يظ
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🚫 قواعد مكافحة الهلوسة الصارمة
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+<<<<<<< HEAD
 1. لا تنقر على عنصر غير موجود في قائمة [eN] — إذا لم تره لا تخترعه
 2. لا تبني روابط تحتوي IDs لم تظهر في الصفحة
 3. لا تقل done إلا إذا رأيت الدليل الملموس مذكوراً في العناصر أو النص
 4. إذا ظهر "إجراء بدون أثر" → الصفحة لم تتغير، غيّر إجراءك فوراً
 5. إذا تكرر نفس الخطأ 3 مرات → استخدم ask لإبلاغ المستخدم
 6. كل معلومة تستخدمها يجب أن تكون مرئية في قائمة العناصر أو مأخوذة من المستخدم
+=======
+1. لا تخترع روابط بـ IDs لم تظهر في هيكل الصفحة الحالية
+2. لا تقل done إلا إذا رأيت الدليل الملموس مكتوباً في هيكل الصفحة
+3. إذا تكرر نفس الخطأ 3 مرات → استخدم ask لإبلاغ المستخدم
+4. لا تكرر نفس الإجراء 3 مرات بدون تغيير
+6. كل معلومة تستخدمها يجب أن تكون مرئية في الصفحة أو مأخوذة من المستخدم
+7. لا تكرر التفكير في الخطوات السابقة كأنها لم تحدث، ركز على الحالة الحالية فقط
+8. إذا فشل إجراء "click" بالنص، جرب "sel:" أو "key: Enter" بدلاً من إعادة المحاولة بنفس النص
+9. تجنب "الهلوسة الدائرية": لا تقم بإجراء "navigate" لنفس الرابط الذي أنت فيه حالياً إلا إذا كنت تريد تحديث الصفحة فعلياً
+10. في سطر THINK، قارن الحالة الحالية بالحالة السابقة لتجنب الدوران في حلقات مفرغة
+>>>>>>> dae5e620f9f496d95df15522258a7b0e3feb9a71
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 قاعدة done الصارمة
@@ -495,7 +701,9 @@ ACTION: click | PARAM: Create App Button  ← هذا مخترع إذا لم يظ
 /**
  * تحليل سطر THINK من رد الوكيل
  */
-export function parseReasoningLine(raw: string): { think: string; action: string; param: string } | null {
+export function parseReasoningLine(
+  raw: string,
+): { think: string; action: string; param: string } | null {
   const thinkMatch = raw.match(/THINK:\s*(.+)/i);
   const actionMatch = raw.match(/ACTION:\s*(\w+)\s*\|\s*PARAM:\s*(.+)/i);
 
@@ -566,7 +774,14 @@ export interface ErrorPattern {
   errorText: string;
   count: number;
   firstSeen: number;
-  category: "auth" | "permission" | "not_found" | "ui" | "network" | "known_ignorable" | "unknown";
+  category:
+    | "auth"
+    | "permission"
+    | "not_found"
+    | "ui"
+    | "network"
+    | "known_ignorable"
+    | "unknown";
   suggestedAction: string;
   shouldEscalate: boolean;
 }
@@ -620,11 +835,30 @@ export class ErrorPatternTracker {
   private categorizeError(text: string): ErrorPattern["category"] {
     const t = text.toLowerCase();
     // الأخطاء التي يجب تجاهلها (طبيعية)
-    if (t.includes("app publish status") || t.includes("publish status")) return "known_ignorable";
-    if (t.includes("password") || t.includes("login") || t.includes("unauthorized") || t.includes("كلمة مرور")) return "auth";
-    if (t.includes("permission") || t.includes("صلاحية") || t.includes("not allowed") || t.includes("forbidden")) return "permission";
-    if (t.includes("not found") || t.includes("404") || t.includes("لم يُعثر")) return "not_found";
-    if (t.includes("network") || t.includes("timeout") || t.includes("connection")) return "network";
+    if (t.includes("app publish status") || t.includes("publish status"))
+      return "known_ignorable";
+    if (
+      t.includes("password") ||
+      t.includes("login") ||
+      t.includes("unauthorized") ||
+      t.includes("كلمة مرور")
+    )
+      return "auth";
+    if (
+      t.includes("permission") ||
+      t.includes("صلاحية") ||
+      t.includes("not allowed") ||
+      t.includes("forbidden")
+    )
+      return "permission";
+    if (t.includes("not found") || t.includes("404") || t.includes("لم يُعثر"))
+      return "not_found";
+    if (
+      t.includes("network") ||
+      t.includes("timeout") ||
+      t.includes("connection")
+    )
+      return "network";
     return "ui";
   }
 
@@ -650,7 +884,11 @@ export class ErrorPatternTracker {
 /**
  * كاشف الروابط المخترعة
  */
-export function detectFabricatedUrl(url: string, pageContent: string, pageStructure: string): boolean {
+export function detectFabricatedUrl(
+  url: string,
+  pageContent: string,
+  pageStructure: string,
+): boolean {
   if (!url || !url.startsWith("http")) return false;
   const urlIdMatch = url.match(/\/(\d{10,})\//);
   if (urlIdMatch) {
@@ -686,7 +924,7 @@ ${complexity.reasons.join(" | ")}
 ${audit.knownFailurePoints.join("\n")}
 
 ## دليل الاكتمال المطلوب
-${checklist.items.map(i => `- ${i.mustBeVisible}`).join("\n")}
+${checklist.items.map((i) => `- ${i.mustBeVisible}`).join("\n")}
 
 أجب بـ JSON فقط:
 {

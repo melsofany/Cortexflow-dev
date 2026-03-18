@@ -16,6 +16,10 @@ CortexFlow is a professional multi-agent AI platform inspired by Manus AI's arch
 - **Procedural Memory**: Skill/workflow learning from successful tasks
 - **Episodic Memory**: Historical task context retrieval
 - **Hybrid AI**: Ollama (local) → DeepSeek (cloud) → fallback chain
+- **Reflexion Engine**: Verbal reinforcement learning — generates self-critiques after each task, stores them, and uses them to improve future attempts (inspired by Reflexion 2023 paper)
+- **Prompt Optimizer**: DSPy/MIPROv2-inspired automatic prompt improvement — tracks success rates per category, generates improved variants, selects best performers
+- **Self-Improvement Loop**: Continuous self-learning system — generates behavior rules from patterns, detects performance trends, runs optimization cycles every 10 tasks
+- **Persistent Long-Term Memory**: Memory now saved to disk (data/long_term_memory.json), persists across server restarts, with success/failure tracking
 
 ## Stack
 

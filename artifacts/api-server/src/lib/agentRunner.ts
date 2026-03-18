@@ -22,6 +22,9 @@ import { mcpTools } from "./mcpTools.js";
 import { gaiaEvaluator } from "./gaiaEvaluator.js";
 import { semanticMemory } from "./semanticMemory.js";
 import { proceduralMemory } from "./proceduralMemory.js";
+import { reflexionEngine } from "./reflexionEngine.js";
+import { promptOptimizer } from "./promptOptimizer.js";
+import { selfImprovementLoop } from "./selfImprovementLoop.js";
 import {
   analyzeTaskComplexity,
   buildKnowledgeAudit,
@@ -316,6 +319,24 @@ class AgentRunner extends EventEmitter {
       this.emitStep(task.taskId, "THINK", failureHints);
     }
 
+    // Check for success hints from similar past tasks
+    const successHints = memorySystem.getSuccessHints(task.description);
+    if (successHints) {
+      this.emitStep(task.taskId, "MEMORY", successHints);
+    }
+
+    // Self-improvement: apply learned behavior rules
+    const behaviorRules = selfImprovementLoop.buildRulesContext(task.type || "general");
+    if (behaviorRules) {
+      this.emitStep(task.taskId, "THINK", `🧠 **قواعد السلوك المكتسبة:**${behaviorRules}`);
+    }
+
+    // Reflexion: retrieve relevant reflections from past similar tasks
+    const reflexionCtx = reflexionEngine.buildReflexionContext(task.description, 1);
+    if (reflexionCtx) {
+      this.emitStep(task.taskId, "MEMORY", `🔄 **تأملات من مهام مشابهة متاحة**`);
+    }
+
     // Propagate multi-agent activity events
     const onAgentActivity = (d: any) => {
       if (d.taskId === task.taskId) {
@@ -344,6 +365,34 @@ class AgentRunner extends EventEmitter {
       learningEngine.recordTaskOutcome(false);
       techIntelligence.onTaskEnd(task.taskId, false);
       try { learningEngine.learnStrategy(task.description, [`فشل: ${msg.substring(0, 80)}`], false); } catch {}
+
+      // Self-improvement: تسجيل الإخفاق وتوليد تأمل
+      try {
+        selfImprovementLoop.recordTaskCompletion({
+          category: task.type || "general",
+          taskDesc: task.description.substring(0, 100),
+          score: 0.1,
+          success: false,
+          duration: Date.now() - start,
+          toolsUsed: [],
+          reflexionUsed: false,
+        });
+        promptOptimizer.recordTrial(
+          task.type || "general",
+          task.description.substring(0, 100),
+          0.1,
+          false,
+          msg.substring(0, 100),
+        );
+        // توليد تأمل للإخفاق
+        const reflexLLM = async (msgs: Array<{ role: string; content: string }>) =>
+          smartChat(msgs as any, { temperature: 0.3, max_tokens: 400 });
+        reflexionEngine.generateReflection(
+          task.taskId, task.description, `خطأ: ${msg}`,
+          "failure", 1, reflexLLM, task.type || "general",
+        ).catch(() => {});
+      } catch {}
+
       taskStore.updateTask(task.taskId, { status: "failed", error: msg });
       this.emit("taskFail", { taskId: task.taskId, error: msg });
     } finally {
@@ -515,6 +564,19 @@ class AgentRunner extends EventEmitter {
     if (skillsCtx) {
       this.emitStep(taskId, "MEMORY", `💡 ${skillsCtx.split("\n")[1] || "مهارة مكتسبة ذات صلة"}`);
       enrichedDescription = `${enrichedDescription}\n${skillsCtx}`;
+    }
+
+    // ── Reflexion: تأملات من مهام مشابهة سابقة ────────────────────────────
+    const reflexionContext = reflexionEngine.buildReflexionContext(task.description, 1);
+    if (reflexionContext) {
+      this.emitStep(taskId, "MEMORY", `🔄 **Reflexion Context:** تأملات من مهام مشابهة سابقة متاحة للتحسين`);
+      enrichedDescription = `${enrichedDescription}\n\n${reflexionContext}`;
+    }
+
+    // ── Self-Improvement: قواعد السلوك المُكتسبة ─────────────────────────────
+    const rulesCtx = selfImprovementLoop.buildRulesContext(category);
+    if (rulesCtx) {
+      enrichedDescription = `${enrichedDescription}${rulesCtx}`;
     }
 
     // 1) إنشاء خطة DAG
@@ -801,10 +863,56 @@ class AgentRunner extends EventEmitter {
       }).catch(() => {});
     } catch {}
 
+    // ── Self-Improvement: تسجيل النتيجة في حلقة التحسين الذاتي ───────────
+    try {
+      selfImprovementLoop.recordTaskCompletion({
+        category,
+        taskDesc: task.description.substring(0, 100),
+        score: verResult.score / 10,
+        success: verResult.passed,
+        duration,
+        toolsUsed: Array.from(dagPlan.nodes.values()).map(n => n.tool || n.agent).filter(Boolean),
+        reflexionUsed: false,
+      });
+
+      // تسجيل في محسّن البرومبتات
+      promptOptimizer.recordTrial(
+        category,
+        task.description.substring(0, 100),
+        verResult.score / 10,
+        verResult.passed,
+        verResult.suggestions?.join(", ") || "",
+      );
+
+      // توليد تأمل Reflexion (بدون انتظار)
+      if (verResult.score < 7) {
+        const reflexLLM = async (msgs: Array<{ role: string; content: string }>) =>
+          smartChatFn(msgs as any, { temperature: 0.3, max_tokens: 600 }, "REFLEXION");
+        reflexionEngine.generateReflection(
+          taskId, task.description, outputToReturn,
+          verResult.passed ? "success" : "partial",
+          1, reflexLLM, category,
+        ).catch(() => {});
+      } else {
+        memorySystem.recordSuccess(taskId, task.description, outputToReturn, verResult.score / 10);
+      }
+
+      // دورة التحسين الذاتي إذا تراكمت مهام كافية
+      if (selfImprovementLoop.shouldRunCycle()) {
+        const cycleLLM = async (msgs: Array<{ role: string; content: string }>) =>
+          smartChatFn(msgs as any, { temperature: 0.4, max_tokens: 800 }, "SELF_IMPROVEMENT");
+        selfImprovementLoop.runImprovementCycle(cycleLLM).then(result => {
+          if (result.newRules > 0 || result.newInsights > 0) {
+            this.emitStep(taskId, "THINK", `🧬 **التحسين الذاتي:** ${result.summary}`);
+          }
+        }).catch(() => {});
+      }
+    } catch {}
+
     taskStore.updateTask(taskId, { status: "completed", result: outputToReturn });
     taskStore.addLog({
       taskId,
-      agentType: "DAG+Parallel+Verify+GAIA",
+      agentType: "DAG+Parallel+Verify+GAIA+Reflexion",
       action: "task_complete",
       output: outputToReturn.substring(0, 300),
       durationMs: duration,

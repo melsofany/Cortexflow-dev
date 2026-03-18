@@ -264,18 +264,19 @@ export async function selectBestModel(
     }
   }
 
-  if (availableModels.length === 0) {
+  const models: string[] = availableModels || [];
+  if (models.length === 0) {
     if (getDeepSeekKey()) {
       return { model: "deepseek-chat", category, classifier: "deepseek", reason: "DeepSeek API نشط — نموذج سحابي متقدم" };
     }
     return { model: "none", category, reason: "⚠️ لا يوجد نموذج متاح — أضف DEEPSEEK_API_KEY أو ثبّت نموذج Ollama" };
   }
 
-  const installedProfiles = MODEL_PROFILES.filter(p => availableModels!.includes(p.name));
+  const installedProfiles = MODEL_PROFILES.filter(p => models.includes(p.name));
 
   // إذا لم يكن أي نموذج معروف، استخدم الأول المتاح
   if (installedProfiles.length === 0) {
-    return { model: availableModels[0], category, reason: "استخدام أول نموذج متاح" };
+    return { model: models[0], category, reason: "استخدام أول نموذج متاح" };
   }
 
   // حساب نقطة مركبة: أساسية + مكتسبة

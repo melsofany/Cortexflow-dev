@@ -93,7 +93,7 @@ router.post("/ai/chat", async (req, res) => {
 
   try {
     const content = await ollamaClient.chat(
-      finalMessages.map((m) => ({ role: m.role, content: m.content })),
+      finalMessages.map((m) => ({ role: m.role as "user" | "assistant" | "system", content: m.content })),
       { temperature: temperature ?? undefined }
     );
 

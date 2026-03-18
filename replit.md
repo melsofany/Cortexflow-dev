@@ -5,9 +5,16 @@
 CortexFlow is a professional multi-agent AI platform inspired by Manus AI's architecture. It implements:
 - **DAG-based Task Planning**: Tasks as Directed Acyclic Graphs with parallel execution of independent steps
 - **ReAct Engine**: Explicit Thought → Action → Observation loop for complex reasoning
+- **CodeAct Paradigm**: Generates executable Python code as actions (ICML 2024 paper)
+- **Wide Research**: Parallel full-agent instances for large-scale research tasks (Manus AI-inspired)
 - **Parallel Execution**: Multiple agents running simultaneously for speed
 - **Context Manager**: Smart context window compression to avoid token overflow
 - **Tool Orchestrator**: Unified tool registry with caching and intelligent selection
+- **MCP Tools**: Model Context Protocol integration (Anthropic standard)
+- **GAIA Evaluator**: Automatic task quality scoring with historical tracking
+- **Semantic Memory**: TF-IDF based semantic fact/preference storage with similarity search
+- **Procedural Memory**: Skill/workflow learning from successful tasks
+- **Episodic Memory**: Historical task context retrieval
 - **Hybrid AI**: Ollama (local) → DeepSeek (cloud) → fallback chain
 
 ## Stack
@@ -53,7 +60,7 @@ API Server (Express, port 8080)
       Ollama (port 11434) + DeepSeek API
 ```
 
-## New Components (Manus AI-inspired)
+## Core Components (Manus AI-inspired)
 
 - `dagPlanner.ts` — DAG-based task decomposition with dependency tracking
 - `parallelExecutor.ts` — Concurrent execution of independent DAG nodes
@@ -61,6 +68,52 @@ API Server (Express, port 8080)
 - `contextManager.ts` — Smart context compression and working memory
 - `toolOrchestrator.ts` — Unified tool registry with caching and intelligent selection
 - `dag-view.tsx` — Real-time DAG visualization in the frontend
+
+## Advanced Systems (Phase 1-3)
+
+### Phase 1: Action Paradigm + Memory Management
+- `codeActEngine.ts` — CodeAct: generates executable Python code as actions (ICML 2024)
+  - Dynamic todo list management (rewrites task list each iteration)
+  - Integrates with Python agent service for code execution
+- `preTaskResearcher.ts` — Pre-task analysis: complexity scoring, knowledge audit, platform playbooks
+- `verificationAgent.ts` — Quality verification: scores output 1-10, flags gaps, triggers replanning
+
+### Phase 2: Memory Layers
+- `episodicMemory.ts` — Episodic memory: past task history + procedural patterns
+- `semanticMemory.ts` — Semantic memory: facts/preferences/concepts with TF-IDF similarity search
+  - Auto-extracts facts from task outputs
+  - Injects relevant context into each task
+- `proceduralMemory.ts` — Procedural memory: skill/workflow learning
+  - 5 built-in skills (web research, debugging, API integration, data analysis, file processing)
+  - Auto-learns new skills from successful tasks
+  - Routes relevant skills into task context
+
+### Phase 3: Scale + Evaluation + Integration
+- `wideResearch.ts` — Wide Research System: parallel full-agent instances for large tasks
+  - Decomposes into 4-8 independent research threads
+  - Synthesis agent merges results into unified report
+- `mcpTools.ts` — MCP (Model Context Protocol) integration
+  - 9 built-in tools registered
+  - Supports external MCP server connections
+- `gaiaEvaluator.ts` — GAIA-inspired benchmark evaluator
+  - Scores every task on: accuracy, completeness, efficiency, clarity, tool utilization
+  - Tracks performance history with A/B/C/S grade distribution
+  - Generates system health reports + trend analysis
+
+### Advanced API Routes (`/api/`)
+- `/codeact/stats` — CodeAct engine stats
+- `/research/wide/stats` — Wide Research stats
+- `/mcp/tools`, `/mcp/execute`, `/mcp/connect` — MCP tools management
+- `/gaia/report`, `/gaia/evaluations` — GAIA benchmark data
+- `/memory/semantic/stats`, `/memory/semantic/search`, `/memory/semantic/store` — Semantic memory
+- `/memory/semantic/by-type/:type` — Filter by memory type
+- `/memory/procedural/stats`, `/memory/procedural/skills` — Procedural skills
+- `/memory/procedural/find?task=...` — Find relevant skills for task
+
+### AdvancedPanel UI (لوحة الأنظمة المتقدمة)
+- Toggle with "متقدم" button in header
+- 5 sections: 📊 تقييم GAIA | 📋 مهام CodeAct | 🔧 أدوات MCP | 💡 دلالي | 🛠️ مهارات
+- Mobile: dedicated "متقدم" tab with badge on active CodeAct todos
 
 ## Structure
 

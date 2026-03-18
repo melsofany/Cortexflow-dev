@@ -1,0 +1,440 @@
+شوف نكمل تطوير المشروع ازاي ابحث في الانرنت والمستودعات من جيت هب وMANUS AI في التعامل مع المهام المعقده و من حيث التقنيات والمكتبات والهيكل المعماري والورك فلو الي اخر والتعامل مع الوكلاء
+
+The user wants to research how to develop the CortexFlow AI Agent project further, specifically looking at how platforms like Manus AI handle complex tasks, technologies, libraries, architecture, workflows, and agent management. Let me first explore the current codebase to understand what we have, then search the web for relevant information.
+
+دعني أستكشف المشروع الحالي أولاً وأبحث في الإنترنت في نفس الوقت.
+
+Task
+Determine the current project structure, architecture, technologies, and implemented features of the CortexFlow AI Agent.
+
+
+Show work done
+14 seconds
+Result
+Detailed analysis of CortexFlow AI Agent project structure, hybrid TypeScript/Python architecture, technologies like React, LangGraph, and Playwright, and implemented features including multi-agent orchestration, stealth browser automation, and self-evolution capabilities.
+
+Good, I can see the existing project is quite advanced already. It has a lot of Manus-inspired architecture. Now let me search the web for the latest information about Manus AI architecture, agent frameworks, and best practices for complex task handling. Let me also wait for the explore job to complete.
+
+المشروع متقدم جداً بالفعل. دعني أبحث الآن في الإنترنت عن أحدث التقنيات والمعمارية المستخدمة في Manus AI وأنظمة الوكلاء المعقدة.
+
+Loaded web-search skill
+Good, now let me do web searches to find out about Manus AI architecture, and the latest techniques for AI agents handling complex tasks.
+
+Executed action
+Manus AI agent architecture 2025 2026 multi-agent complex tasks technical breakdown
+Web search results
+Manus AI Agent Architecture (2025-2026): Technical Breakdown
+Executive Summary
+Manus AI is an autonomous AI agent platform launched in March 2025 by Monica.im (now acquired by Meta in December 2025). It represents a shift from conversational AI to execution-oriented AI agents capable of autonomously planning and completing complex multi-step tasks without continuous human oversight. …
+
+20 sources
+From Mind to Machine: The Rise of Manus AI as a Fully Autonomous Digital Agent
+arxiv.org
+Manus AI: An Analytical Guide to the Autonomous AI Agent 2025
+baytechconsulting.com
+In-depth technical investigation into the Manus AI agent, focusing on its architecture, tool orchestration, and autonomous capabilities. · GitHub
+gist.github.com
+Manus AI Agent: Revolutionary Mind-to-Action Tech 2025 | AI Tool Report
+theaireport.ai
+Context Engineering for AI Agents: Lessons from Building Manus
+manus.im
+best GitHub repositories multi-agent AI systems LangGraph AutoGen CrewAI 2025 2026
+Web search results
+Best GitHub Repositories for Multi-Agent AI Systems (2025-2026)
+Based on the latest data, here are the top repositories for building multi-agent AI systems with LangGraph, AutoGen, and CrewAI, along with other leading frameworks:
+
+🏆 TOP-TIER FRAMEWORKS
+1. LangGraph (LangChain)
+Official Repo: langchain-ai/langgraph
+Stars: Growing rapidly as the go …
+20 sources
+Top AI GitHub Repositories in 2026
+blog.bytebytego.com
+The Top Ten GitHub Agentic AI Repositories in 2025
+opendatascience.com
+The Top Ten GitHub Agentic AI Repositories in 2025 | by ODSC - Open Data Science | Medium
+odsc.medium.com
+From MCP to multi-agents: The top 10 new open source AI projects on GitHub right now and why they matter - The GitHub Blog
+github.blog
+ai-agents · GitHub Topics · GitHub
+github.com
+AI agent frameworks complex task handling workflow orchestration state machines 2025 2026
+Web search results
+AI Agent Frameworks for Complex Task Handling, Workflow Orchestration & State Machines (2025-2026)
+Here's a comprehensive breakdown of the top frameworks for building multi-agent systems, orchestrating complex workflows, and implementing state machine patterns in production environments.
+
+Top Frameworks at a Glance
+| Framework | Best For | Architecture | State Management | Pro …
+
+20 sources
+Top AI Agent Orchestration Frameworks for Developers 2025
+kubiya.ai
+Top 9 AI Agent Frameworks as of March 2026 | Shakudo
+shakudo.io
+Agentic AI Orchestration in 2026: Automating Workflows at Scale
+onereach.ai
+Unlocking exponential value with AI agent orchestration
+deloitte.com
+Multi-Agent Frameworks Explained for Enterprise AI Systems [2026]
+adopt.ai
+Now let me search for more specific information about the Manus AI GitHub repos and technical papers to understand how to improve the CortexFlow project.
+
+Executed action
+CodeAct paradigm executable Python actions AI agents GitHub research paper
+Web search results
+CodeAct: Executable Code Actions for LLM Agents
+Research Paper & GitHub
+Paper: "Executable Code Actions Elicit Better LLM Agents"
+📄 arXiv 2402.01030 | Accepted at ICML 2024
+🔗 GitHub Repository
+🤗 Hugging Face Paper Page
+
+Authors: Xingyao Wang …
+
+10 sources
+[2402.01030] Executable Code Actions Elicit Better LLM Agents
+arxiv.org
+CodeAct Agent Framework
+emergentmind.com
+Executable Code Actions Elicit Better LLM Agents
+arxiv.org
+GitHub - xingyaoww/code-act: Official Repo for ICML 2024 paper "Executable Code Actions Elicit Better LLM Agents" by Xingyao Wang, Yangyi Chen, Lifan Yuan, Yizhe Zhang, Yunzhu Li, Hao Peng, Heng Ji. · GitHub
+github.com
+CodeAct: Your LLM Agent Acts Better when Generating Code - Apple Machine Learning Research
+machinelearning.apple.com
+Internal server error
+
+Internal server error
+
+The web search hit an error. Let me try again with individual searches.
+
+Executed action
+OpenManus GitHub open source Manus AI agent architecture tools 2025
+Web search results
+OpenManus - Open-Source AI Agent Framework (2025)
+Overview
+OpenManus is an open-source framework for building general-purpose AI agents, released in 2025. The motto: "No fortress, purely open ground" — emphasizing accessibility without barriers.
+
+🔗 Main Repositories
+Repository	Description	Link
+FoundationAgents/OpenManus	…	
+10 sources
+OpenManus - Open-source Framework for Building AI Agents
+openmanus.github.io
+GitHub - FoundationAgents/OpenManus: No fortress, purely open ground. OpenManus is Coming. · GitHub
+github.com
+GitHub - henryalps/OpenManus: OpenManus is an open-source initiative to replicate the capabilities of the Manus AI agent, a state-of-the-art general-purpose AI developed by Monica, which excels in autonomously executing complex tasks. · GitHub
+github.com
+openmanus-ai (openmanus) · GitHub
+github.com
+In-depth technical investigation into the Manus AI agent, focusing on its architecture, tool orchestration, and autonomous capabilities. · GitHub
+gist.github.com
+Now I have a comprehensive picture of both the existing project and the state-of-the-art in Manus AI and agent frameworks. Let me now compile this into a comprehensive analysis and roadmap for the user in Arabic and English.
+
+The key things I found:
+
+Manus AI Architecture: Multi-agent with Planner, Executor, Verifier agents. CodeAct paradigm (executable Python as actions). Cloud VM sandbox. Dynamic model routing. File-based memory. One action per iteration constraint.
+
+CortexFlow current state: Already has DAG planner, parallel executor, ReAct engine, context manager, tool orchestrator, tech intelligence, learning engine, episodic memory, browser agent.
+
+Gaps to address: CortexFlow could benefit from adopting the CodeAct paradigm for more robust action execution, implementing Docker-based sandboxing for better isolation, adding parallel multi-agent research capabilities for handling large-scale tasks, improving persistent memory with dynamic todo lists, optimizing KV-cache usage, enforcing action-per-iteration monitoring, supporting webhook-driven async execution, strengthening the verification loop, expanding model provider integrations beyond what's currently supported, and establishing GAIA-style benchmarking for better evaluation metrics.
+
+Now I'm thinking about how to present these improvements to the user in a structured way with actionable next steps.
+
+Executed action
+agent memory types episodic semantic procedural working memory AI agents 2025 implementation
+Web search results
+AI Agent Memory Types & 2025 Implementation Guide
+Overview: The Four Core Memory Types
+Modern AI agents in 2025 implement memory systems inspired by human cognition, with four main memory types working together:
+
+Memory Type	Function	Storage	Use Case
+Working Memory	Active context during current session	Co …	
+20 sources
+GitHub - Shichun-Liu/Agent-Memory-Paper-List: The paper list of "Memory in the Age of AI Agents: A Survey" · GitHub
+github.com
+Beyond Short-term Memory: The 3 Types of Long-term Memory AI Agents Need - MachineLearningMastery.com
+machinelearningmastery.com
+What Is AI Agent Memory? | IBM
+ibm.com
+Agent Memory: Why Your AI Has Amnesia and How to Fix It | developers
+blogs.oracle.com
+Making Sense of Memory in AI Agents – Leonie Monigatti
+leoniemonigatti.com
+Now I have enough information to provide a comprehensive analysis and roadmap for improving CortexFlow. Let me summarize everything in a clear way.
+
+Current State of CortexFlow (from the explore):
+
+DAG-based task planning ✓
+Parallel execution ✓
+ReAct engine ✓
+Context Manager ✓
+Tool Orchestrator ✓
+Tech Intelligence (self-improvement) ✓
+Episodic Memory ✓
+Browser Agent with Playwright ✓
+Learning Engine ✓
+Multi-model routing ✓
+What Manus AI does that we could add/improve:
+
+Looking at their approach, they use a CodeAct paradigm where the agent generates executable Python code directly instead of relying on fixed tool calls, giving much more flexibility. They also enforce one action per iteration for better control and monitoring, maintain file-based persistent memory with dynamic todo lists that get refreshed to stay within the agent's attention window, and run multiple full agent instances in parallel on the same task rather than just parallelizing steps within a single DAG. They isolate each task in Docker containers for safety, optimize KV-cache usage more aggressively, and implement verification mechanisms throughout.
+
+Beyond that, they're adding webhook-driven async execution so tasks continue even if the user disconnects, incorporating multiple model providers like Claude and Gemini alongside DeepSeek, and tracking performance against the GAIA benchmark for self-evaluation. From OpenManus they're adopting MCP tool integration and TOML-based configurable multi-agent flows with better modularity. They also recognize they need semantic memory through knowledge graphs and vector databases to store facts and preferences, plus procedural memory to capture learned skill patterns. For orchestration, they're moving beyond the current supervisor pattern to add swarm capabilities and hierarchical multi-level orchestration for handling very complex tasks.
+
+الآن لدي صورة كاملة عن المشروع الحالي وما تفعله أنظمة مثل Manus AI. دعني أجمع كل شيء في تقرير شامل.
+
+تقرير: تطوير CortexFlow — ما وصلنا إليه وما الخطوة التالية
+ما لدينا فعلاً (قوي جداً ✅)
+المكوّن	الحالة
+DAG Planner — تقسيم المهام كرسم بياني	✅ موجود
+Parallel Executor — تشغيل الوكلاء بالتوازي	✅ موجود
+ReAct Engine — دورة تفكير → فعل → ملاحظة	✅ موجود
+Context Manager — ضغط السياق الذكي	✅ موجود
+Tool Orchestrator — مسجّل أدوات موحّد	✅ موجود
+Tech Intelligence — نظام التحسين الذاتي	✅ موجود
+Episodic Memory — ذاكرة الأحداث السابقة	✅ موجود
+Browser Agent (Playwright + Stealth)	✅ موجود
+Learning Engine — التعلم من النجاح والفشل	✅ موجود
+Smart Model Routing — توجيه النماذج	✅ موجود
+ما تفعله Manus AI وGitHub repos الكبيرة ونحتاجه
+بعد البحث في معمارية Manus AI 1.6 وOpenManus وأبرز مستودعات GitHub مثل LangGraph وCrewAI وMetaGPT، وجدت 5 فجوات رئيسية يمكن أن ترفع CortexFlow لمستوى الإنتاج الاحترافي:
+
+🔴 الفجوة 1: CodeAct Paradigm (الأهم)
+Manus لا تستخدم أدوات ثابتة مثل web_search() أو execute_code(). بدلاً من ذلك، تولّد كود Python كاملاً قابل للتنفيذ كإجراء:
+
+# بدل: { tool: "web_search", query: "..." }
+# Manus تولّد:
+import requests
+from bs4 import BeautifulSoup
+results = requests.get("https://...")
+data = parse_results(results.text)
+save_to_file("research.md", format_data(data))
+هذا يجمع عدة أدوات في إجراء واحد ويتعامل مع الحالات الشرطية ويستخدم كامل بيئة Python.
+
+🟠 الفجوة 2: ذاكرة ديناميكية بـ Todo List
+Manus تحتفظ بـ قائمة مهام تُعاد كتابتها في كل خطوة لتبقى في منطقة الانتباه القريبة للنموذج. حالياً لدينا episodic memory لكن لا يوجد نظام todo list يتحكم في الأولويات ديناميكياً.
+
+🟠 الفجوة 3: Wide Research System — وكلاء متوازية كاملة
+Manus عند المهام الكبيرة تطلق وكلاء Manus كاملة (ليس فقط خطوات DAG متوازية) للعمل على أجزاء مختلفة من المهمة في نفس الوقت، تحسين بمقدار 100×.
+
+🟡 الفجوة 4: ذاكرة دلالية (Semantic Memory)
+حالياً لدينا Episodic Memory (أحداث زمنية). ينقصنا:
+
+Semantic Memory: حقائق وتفضيلات المستخدم في قاعدة بيانات متجهية
+Procedural Memory: مهارات وسير عمل تعلّمها النظام مسبقاً
+🟡 الفجوة 5: MCP Tools Integration
+معيار Model Context Protocol (من Anthropic) أصبح المعيار القياسي لتوسيع أدوات الوكيل. OpenManus يدعمه. يسمح بتوصيل أدوات خارجية بدون كود إضافي.
+
+الخطة المقترحة للتطوير (3 مراحل)
+المرحلة 1 — الأساس (أسبوع 1-2):
+  ✦ CodeAct: تحويل الأدوات لتوليد Python قابل للتنفيذ
+  ✦ Dynamic Todo List: إدارة قوائم المهام مع إعادة الكتابة
+  ✦ Sandbox Isolation: تشغيل الكود في بيئة معزولة آمنة
+المرحلة 2 — الذاكرة والذكاء (أسبوع 3-4):
+  ✦ Semantic Memory: قاعدة بيانات متجهية للحقائق والتفضيلات
+  ✦ Procedural Memory: حفظ المهارات والسير الناجحة
+  ✦ Better Verification Agent: وكيل تحقق مستقل ومتخصص
+المرحلة 3 — التوسّع (أسبوع 5-6):
+  ✦ Wide Research: وكلاء متوازية كاملة للمهام الضخمة
+  ✦ MCP Integration: توصيل أدوات خارجية بالمعيار القياسي
+  ✦ GAIA Benchmark: تقييم ذاتي وقياس الأداء
+من أين تريد أن نبدأ؟ المرحلة الأولى بـ CodeAct هي الأقوى تأثيراً، أم تفضل شيئاً محدداً؟
+
+Add historical performance data for agent and task metrics
+3:58 am, Mar 18, 2026
+قم بتنفيذهم كلهم الان
+
+The user wants me to implement all the phases I described. Let me look at the current codebase structure to understand what files exist and how to best implement the improvements.
+
+The 3 phases were:
+
+Phase 1: CodeAct (Python code generation as actions), Dynamic Todo List, Sandbox Isolation
+Phase 2: Semantic Memory (vector DB), Procedural Memory, Better Verification Agent
+Phase 3: Wide Research (parallel full agents), MCP Integration, GAIA Benchmark
+Let me first explore the current file structure to understand what's there.
+
+سأبدأ التنفيذ الفوري. دعني أستكشف البنية الحالية أولاً لأعرف بالضبط أين أضيف كل شيء.
+
+$ find artifacts/api-server/src artifacts/agent-service -type f | sort
+$ find artifacts/cortexflow/src -type f | sort
+الآن أقرأ الملفات الرئيسية لأفهم البنية الحالية:
+
+Now I have a complete understanding of the codebase. Let me now plan and implement all the improvements:
+
+Phase 1: CodeAct Paradigm + Dynamic Todo List + Sandbox Isolation
+
+codeActEngine.ts - New module: generates executable Python code as actions instead of fixed tool calls
+dynamicTodoList.ts - Dynamic todo list that rewrites itself for context management
+Update toolOrchestrator.ts to add codeact as a tool type
+Phase 2: Semantic Memory + Procedural Memory + Better Verification Agent
+4. semanticMemory.ts - Vector-like semantic memory using file-based similarity search
+
+proceduralMemory.ts - Learns successful workflows and patterns as reusable skills
+Update verificationAgent.ts to perform more rigorous validation checks
+Phase 3: Wide Research System + MCP Tools + Performance Tracking
+7. wideResearch.ts - Parallel full agent instances for large research tasks
+
+mcpTools.ts - MCP protocol integration
+Update agentRunner.ts to orchestrate all new systems
+I'll start implementing these modules sequentially, creating all the new files first before wiring them together. Let me check the existing verificationAgent and episodic memory implementations to understand what I'm working with.
+
+ممتاز! لدي فهم كامل للبنية. الآن سأبدأ التنفيذ الكامل للمراحل الثلاث. سأعمل على كل شيء في وقت واحد:
+
+Now I have a complete picture. Let me now implement all 3 phases. I'll create the new files and modify existing ones.
+
+New files to create:
+
+codeActEngine.ts - CodeAct paradigm (Phase 1)
+
+dynamicTodoList.ts - Dynamic todo list (Phase 1)
+
+sandboxRunner.ts - Sandbox isolation for code execution (Phase 1)
+
+semanticMemory.ts - Enhanced semantic memory with vector-like search (Phase 2)
+
+proceduralMemory.ts - Procedural memory for learned skills (Phase 2)
+
+wideResearch.ts - Wide Research parallel agents (Phase 3)
+
+mcpTools.ts - MCP protocol tools integration (Phase 3)
+
+gaiaEvaluator.ts - GAIA-style benchmark tracking (Phase 3)
+
+I also need to update the core infrastructure by wiring everything together in agentRunner.ts, enhancing verificationAgent.ts with multi-criteria checking, and extending toolOrchestrator.ts to support the CodeAct paradigm. On the frontend, I'll add a new panel for wide research visualization and a todo list display. Let me start building these components.
+
+الآن سأبدأ التنفيذ الكامل لجميع المراحل الثلاث. سأعمل على الملفات بالتوازي:
+
+Good, both files created. Now let me create the MCP tools and GAIA evaluator, then update the existing files.
+
+Good. Now let me update the agentRunner.ts to wire in the new systems. I need to read the rest of agentRunner.ts to see what's after line 1001.
+
+الآن أقرأ باقي agentRunner.ts لأضيف التكامل مع الأنظمة الجديدة:
+
+Now I need to:
+
+Update agentRunner.ts to use the new systems (CodeAct, WideResearch, GAIA Evaluator, MCP Tools)
+Create new API routes for the new systems
+Update the routes index
+Update the frontend to show the new panels
+Let me update the agentRunner.ts to integrate all the new systems. I need to:
+
+Import codeActEngine, wideResearch, mcpTools, gaiaEvaluator
+
+In runWithPlannerAndAgents, check if Wide Research should be used
+
+After task completion, run GAIA evaluation
+
+Use CodeAct for complex coding tasks
+
+Integrate MCP tools as replacements/supplements to toolOrchestrator
+
+Now I'm adding the necessary imports and updating the runWithPlannerAndAgents method to wire everything together.
+
+الآن أضيف التكامل في agentRunner.ts وأنشئ المسارات الجديدة:
+
+Now I need to update the runWithPlannerAndAgents method in agentRunner.ts to:
+
+Use Wide Research when it's a large research task
+Use CodeAct for complex coding tasks
+Run GAIA evaluation after each task
+Let me find the right place to add the wide research check.
+
+الآن أضيف Wide Research والتقييم التلقائي في المسار الصحيح:
+
+Good. Now I need to add GAIA evaluation at the end of the main task flow too (after the DAG execution). Let me find and update that section.
+
+الآن أضيف التقييم التلقائي بعد انتهاء الـ DAG الكلاسيكي وأنشئ مسارات API الجديدة:
+
+Now let me create the new API routes for the new systems (codeact, wide research, mcp, gaia), and update the routes/index.ts. Let me also look at what's in the dagPlanner.ts to understand the tool field on nodes.
+
+الآن أنشئ المسارات الجديدة وأضيف التكامل للواجهة الأمامية:
+
+Now I need to update the frontend to show:
+
+Todo List panel for CodeAct tasks
+Wide Research progress panel
+GAIA Evaluator scores panel
+MCP Tools panel
+Let me check the App.tsx and the tech panel to see how the existing TechPanel is structured so I can add a similar "Advanced AI" panel.
+
+Let me first check the App.tsx structure.
+
+الآن أضيف لوحة الأنظمة المتقدمة في الواجهة الأمامية:
+
+The server is already running. Let me now add the new components to the frontend. I need to find the right place in App.tsx to add:
+
+A Todo List panel (for CodeAct tasks)
+A GAIA Score panel
+A Wide Research progress visualization
+Let me look at more of the App.tsx to find where the tech panel is added and add the new panel there.
+
+السيرفر شغّال. الآن أضيف لوحة الأنظمة المتقدمة في الواجهة:
+
+Now I understand the structure. I need to add a new "Advanced AI" panel that shows:1. GAIA Score / evaluations
+2. Todo List for CodeAct tasks3. Wide Research progress4. MCP ToolsI'll create a new AdvancedPanel component and add it to the app similar to TechPanel. Let me look at the area around line 232 to see the TechPanel definition and how it's structured. Let me also look at what state changes I need to make.
+
+Let me read the section around the TechPanel component definition (around line 232) more closely.
+
+الآن أنشئ لوحة الأنظمة المتقدمة وأضيفها للواجهة. أقرأ المنطقة الصحيحة في App.tsx أولاً:
+
+Now let me add the new GAIA/Advanced panel to the App.tsx. I need to:
+
+Add new state variables for showAdvanced, gaiaScore, todoList, wideResearchProgress
+Add an AdvancedPanel component that shows GAIA scores, todo list, and MCP tools
+Add socket handlers for todoUpdate
+Add a button in the header to toggle the advanced panel
+Let me write the AdvancedPanel component. I'll add it right before the App component definition.
+
+The key parts to modify:
+
+After line 232 (TechPanel), add the AdvancedPanel component
+
+After line 1033 (showTech state), add showAdvanced state
+
+After the socket.on('techUpdate') handler, add socket.on('todoUpdate')
+
+In the header, add a button for the advanced panel
+
+In the layout, add the advanced column
+
+Let me start writing.
+
+ممتاز! الآن أضيف لوحة الأنظمة المتقدمة للواجهة. أقرأ المنطقة بعد TechPanel لأعرف أين أضيف:
+
+Good. Now I'll add the AdvancedPanel component and integrate it into the App. Let me add it after the TechPanel (line 493), update the state and socket handlers, and add the button to the header.
+
+Let me add the AdvancedPanel component right after the TechPanel (after line 493).
+
+الآن أضيف لوحة الأنظمة المتقدمة مباشرة في App.tsx:
+
+Now I need to add the state variables and socket handlers for the new advanced panel, and add the button in the header and the panel in the layout. Let me do that in parallel with the other changes.
+
+الآن أضيف state variables والمعالجات الجديدة ثم أدمج اللوحة في الواجهة:
+
+Now add the socket handler for todoUpdate and add the AdvancedPanel button in the header, and the panel in the layout.
+
+الآن أضيف socket handler لـ todoUpdate:
+
+I have a potential issue - showAdvanced is being used before it's captured in the socket event handler closure since it's in a useEffect. Let me fix this by using setShowAdvanced unconditionally or by using a ref. Actually the pattern in the existing code is fine since the handler's closure captures the initial value of showAdvanced. But the real issue is that the socket.on handler is inside a useEffect with [addSystem, addAgent, addThinking] deps, and showAdvanced is not in that dep array. Let me simplify - just always set the todoList, don't conditionally show the panel (the user can manually open it).
+
+الآن أضيف زر الأنظمة المتقدمة في الهيدر والعمود في التصميم:
+
+Good. Now I need to add the button in the header for the Advanced panel and add the panel in the desktop layout. Let me find the right places.
+
+الآن أضيف الزر في الهيدر والعمود في التصميم:
+
+Now I need to add the AdvancedPanel to the desktop layout - in the 3-column section after the Tech panel. Let me find the right place.
+
+الآن أضيف لوحة الأنظمة المتقدمة في التخطيط:
+
+Now let me add the mobile tab for the advanced panel and also check for any TypeScript errors.
+
+الآن أضيف تبويب "المتقدمة" للموبايل وأتحقق من الأخطاء:
+
+I see the mobile tab rendering. I need to add "advanced" as a tab option for mobile. Also I need to update the ActiveTab type and TABS array to include the advanced tab. Let me find the TABS definition and update it.
+
+Let me update the TABS array to include the advanced tab and the mobile rendering to include it. Also I need to update the ActiveTab type.
+
+Good. Now let me update the TABS array and the mobile rendering for the new advanced tab.
+
+You've reached your monthly free quota limit. It will reset on April 15, 2026.

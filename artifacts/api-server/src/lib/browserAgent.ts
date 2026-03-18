@@ -108,7 +108,7 @@ class BrowserAgent extends EventEmitter {
     try {
       const screenshot = await this.page.screenshot({ type: "jpeg", quality: 60 });
       const base64 = screenshot.toString("base64");
-      const url = this.currentUrl || await this.page.url().catch(() => "");
+      const url = this.currentUrl || this.page.url() || "";
       this.emit("screenshot", { image: base64, url });
     } catch { } finally {
       this.capturing = false;
@@ -1048,7 +1048,8 @@ class BrowserAgent extends EventEmitter {
       const title = await this.page.title().catch(() => "");
 
       // Playwright accessibility snapshot — يُعيد شجرة العناصر التفاعلية فقط
-      const snapshot = await this.page.accessibility.snapshot({ interestingOnly: true });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const snapshot = await (this.page as any).accessibility?.snapshot?.({ interestingOnly: true }) ?? null;
 
       if (!snapshot) return `الصفحة: ${title}\nURL: ${url}\n[لا توجد عناصر تفاعلية]`;
 

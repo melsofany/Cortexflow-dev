@@ -500,15 +500,22 @@ interface GaiaReport { totalEvaluations: number; averageScore: number; systemHea
 
 const AdvancedPanel = memo(({ apiBase, todoList }: { apiBase: string; todoList: TodoList | null }) => {
   const API = apiBase ? `${apiBase}/api` : '/api';
-  const [activeSection, setActiveSection] = useState<'todo'|'gaia'|'mcp'>('gaia');
+  const [activeSection, setActiveSection] = useState<'todo'|'gaia'|'mcp'|'semantic'|'skills'>('gaia');
   const [gaiaReport, setGaiaReport]       = useState<GaiaReport | null>(null);
   const [gaiaEvals, setGaiaEvals]         = useState<GaiaEval[]>([]);
   const [mcpTools, setMcpTools]           = useState<any[]>([]);
   const [loadingGaia, setLoadingGaia]     = useState(false);
+  const [semanticStats, setSemanticStats] = useState<any>(null);
+  const [semanticEntries, setSemanticEntries] = useState<any[]>([]);
+  const [proceduralStats, setProceduralStats] = useState<any>(null);
+  const [proceduralSkills, setProceduralSkills] = useState<any[]>([]);
+  const [loadingMem, setLoadingMem]       = useState(false);
 
   useEffect(() => {
     if (activeSection === 'gaia') loadGaia();
     else if (activeSection === 'mcp') loadMcp();
+    else if (activeSection === 'semantic') loadSemantic();
+    else if (activeSection === 'skills') loadProcedural();
   }, [activeSection]);
 
   const loadGaia = async () => {
@@ -528,6 +535,32 @@ const AdvancedPanel = memo(({ apiBase, todoList }: { apiBase: string; todoList: 
       const d = await fetch(`${API}/mcp/tools`).then(r => r.json());
       setMcpTools(d.tools || []);
     } catch {}
+  };
+
+  const loadSemantic = async () => {
+    setLoadingMem(true);
+    try {
+      const [stats, facts, prefs] = await Promise.all([
+        fetch(`${API}/memory/semantic/stats`).then(r => r.json()),
+        fetch(`${API}/memory/semantic/by-type/fact`).then(r => r.json()),
+        fetch(`${API}/memory/semantic/by-type/preference`).then(r => r.json()),
+      ]);
+      setSemanticStats(stats);
+      const combined = [...(facts.entries || []), ...(prefs.entries || [])];
+      setSemanticEntries(combined.slice(0, 20));
+    } catch {} finally { setLoadingMem(false); }
+  };
+
+  const loadProcedural = async () => {
+    setLoadingMem(true);
+    try {
+      const [stats, skills] = await Promise.all([
+        fetch(`${API}/memory/procedural/stats`).then(r => r.json()),
+        fetch(`${API}/memory/procedural/skills`).then(r => r.json()),
+      ]);
+      setProceduralStats(stats);
+      setProceduralSkills(skills.skills || []);
+    } catch {} finally { setLoadingMem(false); }
   };
 
   const gradeColor = (g: string) => {
@@ -550,13 +583,13 @@ const AdvancedPanel = memo(({ apiBase, todoList }: { apiBase: string; todoList: 
           <Sparkles size={14} className="text-violet-400"/>
           <span className="text-xs font-bold text-slate-200">الأنظمة المتقدمة</span>
         </div>
-        <div className="flex gap-1">
-          {(['gaia','todo','mcp'] as const).map(s => (
+        <div className="flex gap-1 flex-wrap">
+          {(['gaia','todo','mcp','semantic','skills'] as const).map(s => (
             <button key={s} onClick={() => setActiveSection(s)}
-              className={`flex-1 py-1 rounded-lg text-[10px] font-semibold transition-all ${
+              className={`flex-1 py-1 rounded-lg text-[10px] font-semibold transition-all min-w-0 ${
                 activeSection === s ? 'bg-violet-600/30 text-violet-300 border border-violet-500/30' : 'text-slate-500 hover:text-slate-300'
               }`}>
-              {s === 'gaia' ? '📊 التقييم' : s === 'todo' ? '📋 المهام' : '🔧 الأدوات'}
+              {s === 'gaia' ? '📊 تقييم' : s === 'todo' ? '📋 مهام' : s === 'mcp' ? '🔧 أدوات' : s === 'semantic' ? '💡 دلالي' : '🛠️ مهارات'}
             </button>
           ))}
         </div>
@@ -753,6 +786,126 @@ const AdvancedPanel = memo(({ apiBase, todoList }: { apiBase: string; todoList: 
                   </div>
                 ))}
               </div>
+            )}
+          </>
+        )}
+
+        {/* ── Semantic Memory ── */}
+        {activeSection === 'semantic' && (
+          <>
+            {loadingMem ? (
+              <div className="flex items-center justify-center py-8"><Loader2 size={18} className="animate-spin text-violet-400"/></div>
+            ) : (
+              <>
+                <div className="rounded-xl bg-slate-900/60 border border-slate-800/50 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] text-slate-400 font-bold">الذاكرة الدلالية</span>
+                    <button onClick={loadSemantic} className="text-slate-600 hover:text-slate-400 transition-colors"><RefreshCw size={11}/></button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="text-center">
+                      <div className="text-2xl font-black text-violet-400">{semanticStats?.total || 0}</div>
+                      <div className="text-[9px] text-slate-600">سجل دلالي</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-black text-pink-400">{semanticStats?.totalAccesses || 0}</div>
+                      <div className="text-[9px] text-slate-600">وصول</div>
+                    </div>
+                  </div>
+                  {semanticStats?.byType && (
+                    <div className="flex gap-1 mt-2 flex-wrap">
+                      {Object.entries(semanticStats.byType).map(([t, c]: any) => (
+                        <span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                          {t}: {c}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {semanticEntries.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Brain size={24} className="text-slate-700 mx-auto mb-2"/>
+                    <p className="text-[10px] text-slate-600">الذاكرة فارغة — تُملأ تلقائياً من نتائج المهام</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {semanticEntries.map((e: any) => (
+                      <div key={e.id} className="rounded-xl bg-slate-900/40 border border-slate-800/40 p-2.5">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="text-[9px] text-violet-400 font-bold truncate flex-1">{e.subject}</span>
+                          <span className="text-[8px] px-1 py-0.5 rounded bg-slate-800 text-slate-500 border border-slate-700 flex-shrink-0">{e.type}</span>
+                        </div>
+                        <p className="text-[9px] text-slate-500 leading-relaxed line-clamp-2">{e.content}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="h-0.5 flex-1 bg-slate-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-violet-500/50 transition-all" style={{ width: `${(e.confidence || 0) * 100}%` }}/>
+                          </div>
+                          <span className="text-[8px] text-slate-600">{Math.round((e.confidence || 0) * 100)}%</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+
+        {/* ── Procedural Memory / Skills ── */}
+        {activeSection === 'skills' && (
+          <>
+            {loadingMem ? (
+              <div className="flex items-center justify-center py-8"><Loader2 size={18} className="animate-spin text-violet-400"/></div>
+            ) : (
+              <>
+                <div className="rounded-xl bg-slate-900/60 border border-slate-800/50 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] text-slate-400 font-bold">الذاكرة الإجرائية</span>
+                    <button onClick={loadProcedural} className="text-slate-600 hover:text-slate-400 transition-colors"><RefreshCw size={11}/></button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div>
+                      <div className="text-xl font-black text-amber-400">{proceduralStats?.totalSkills || 0}</div>
+                      <div className="text-[9px] text-slate-600">مهارة</div>
+                    </div>
+                    <div>
+                      <div className="text-xl font-black text-emerald-400">{proceduralStats?.learnedSkills || 0}</div>
+                      <div className="text-[9px] text-slate-600">مكتسبة</div>
+                    </div>
+                    <div>
+                      <div className="text-xl font-black text-violet-400">{proceduralStats?.avgConfidence || 0}%</div>
+                      <div className="text-[9px] text-slate-600">ثقة</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  {proceduralSkills.map((skill: any) => {
+                    const successRate = skill.successCount + skill.failureCount > 0
+                      ? Math.round((skill.successCount / (skill.successCount + skill.failureCount)) * 100)
+                      : 100;
+                    return (
+                      <div key={skill.id} className="rounded-xl bg-slate-900/40 border border-slate-800/40 p-2.5">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[10px] font-bold text-amber-300 flex-1 truncate">{skill.name}</span>
+                          <span className={`text-[9px] px-1 py-0.5 rounded border flex-shrink-0 ${
+                            skill.type === 'workflow' ? 'text-blue-400 border-blue-500/20' :
+                            skill.type === 'pattern' ? 'text-emerald-400 border-emerald-500/20' :
+                            'text-slate-400 border-slate-700'
+                          }`}>{skill.type}</span>
+                        </div>
+                        <p className="text-[9px] text-slate-500 mb-1.5">{skill.description?.slice(0, 80)}</p>
+                        <div className="flex items-center gap-2">
+                          <div className="h-0.5 flex-1 bg-slate-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-amber-500/50 transition-all" style={{ width: `${successRate}%` }}/>
+                          </div>
+                          <span className="text-[8px] text-slate-600">{successRate}% نجاح</span>
+                          <span className="text-[8px] text-slate-700">×{skill.successCount}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </>
         )}

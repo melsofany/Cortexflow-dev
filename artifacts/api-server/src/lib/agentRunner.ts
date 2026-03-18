@@ -20,6 +20,8 @@ import { codeActEngine } from "./codeActEngine.js";
 import { wideResearch } from "./wideResearch.js";
 import { mcpTools } from "./mcpTools.js";
 import { gaiaEvaluator } from "./gaiaEvaluator.js";
+import { semanticMemory } from "./semanticMemory.js";
+import { proceduralMemory } from "./proceduralMemory.js";
 import {
   analyzeTaskComplexity,
   buildKnowledgeAudit,
@@ -502,6 +504,19 @@ class AgentRunner extends EventEmitter {
       enrichedDescription = `${enrichedDescription}\n\n${memoryHint}`;
     }
 
+    // ── الذاكرة الدلالية: حقائق وتفضيلات ذات صلة ────────────────────────────
+    const semanticCtx = semanticMemory.formatForContext(task.description, 4);
+    if (semanticCtx) {
+      enrichedDescription = `${enrichedDescription}\n${semanticCtx}`;
+    }
+
+    // ── الذاكرة الإجرائية: مهارات وسير عمل ذات صلة ──────────────────────────
+    const skillsCtx = proceduralMemory.formatSkillsForContext(task.description);
+    if (skillsCtx) {
+      this.emitStep(taskId, "MEMORY", `💡 ${skillsCtx.split("\n")[1] || "مهارة مكتسبة ذات صلة"}`);
+      enrichedDescription = `${enrichedDescription}\n${skillsCtx}`;
+    }
+
     // 1) إنشاء خطة DAG
     this.emitStep(taskId, "PLANNING", "🧠 وكيل التخطيط يحلل المهمة ويبني مخطط تنفيذ ذكي...");
 
@@ -681,7 +696,7 @@ class AgentRunner extends EventEmitter {
 
     try {
       const taskData = taskStore.getTask(taskId);
-      const actionSteps = (taskData?.steps || []).slice(0, 8).map((s: Record<string, string>) => `${s.step}: ${s.content?.substring(0, 60)}`);
+      const actionSteps = (taskData?.steps || []).slice(0, 8).map((s: any) => `${s.step}: ${s.content?.substring(0, 60)}`);
       learningEngine.learnStrategy(task.description, actionSteps, successRate > 0.5);
       learningEngine.recordTaskOutcome(successRate > 0.5);
     } catch {}
@@ -718,6 +733,36 @@ class AgentRunner extends EventEmitter {
     } catch (memErr) {
       console.warn("[EpisodicMemory] فشل تخزين الحلقة:", memErr);
     }
+
+    // ── الذاكرة الدلالية: استخراج حقائق من الناتج ───────────────────────────
+    try {
+      if (verResult.passed && outputToReturn.length > 50) {
+        const stored = semanticMemory.extractAndStore(outputToReturn, `task:${taskId}`);
+        if (stored > 0) {
+          console.log(`[SemanticMemory] استُخلص ${stored} حقيقة من ناتج المهمة`);
+        }
+      }
+    } catch {}
+
+    // ── الذاكرة الإجرائية: تعلّم المهارات من المهام الناجحة ────────────────
+    try {
+      if (verResult.passed && duration < 300000) {
+        const steps = Array.from(dagPlan.nodes.values()).map(n => ({
+          action: n.description || n.title,
+          tool: n.tool,
+          outcome: allResults[n.id]?.substring(0, 80) || "تم",
+        }));
+        const learned = proceduralMemory.learnFromSuccess({
+          taskDescription: task.description,
+          steps,
+          category,
+          durationMs: duration,
+        });
+        if (learned) {
+          console.log(`[ProceduralMemory] تعلّمت مهارة: "${learned.name.substring(0, 40)}"`);
+        }
+      }
+    } catch {}
 
     // ── تقييم GAIA تلقائي بعد كل مهمة DAG ─────────────────────────────────
     try {
@@ -1066,7 +1111,7 @@ class AgentRunner extends EventEmitter {
     // ── التحليل العميق بـ DeepSeek (مثل تحليل الشات) ──────────────────
     const extractedUrl = extractUrl(task.description) || learningEngine.getLearnedUrl(task.description) || task.url;
     this.emitStep(taskId, "THINK", `🔍 DeepSeek يحلل المهمة بعمق...`);
-    const { analysis: deepAnalysis, steps: plannedSteps, needsFromUser, targetUrl: deepSeekUrl, completionCriteria } = await this.deepAnalyzeTask(task.description, extractedUrl);
+    const { analysis: deepAnalysis, steps: plannedSteps, needsFromUser, targetUrl: deepSeekUrl, completionCriteria } = await this.deepAnalyzeTask(task.description, extractedUrl ?? null);
     this.emitStep(taskId, "THINK", deepAnalysis);
 
     // ▶ رابط DeepSeek يحظى بأولوية قصوى — فهو يفهم السياق أفضل من المطابقة النصية

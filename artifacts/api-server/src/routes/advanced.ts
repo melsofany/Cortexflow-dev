@@ -10,6 +10,8 @@ import { codeActEngine } from "../lib/codeActEngine.js";
 import { wideResearch } from "../lib/wideResearch.js";
 import { mcpTools } from "../lib/mcpTools.js";
 import { gaiaEvaluator } from "../lib/gaiaEvaluator.js";
+import { semanticMemory } from "../lib/semanticMemory.js";
+import { proceduralMemory } from "../lib/proceduralMemory.js";
 
 const router = Router();
 
@@ -88,6 +90,54 @@ router.get("/gaia/evaluations", (req, res) => {
 
 router.get("/gaia/stats", (_req, res) => {
   res.json(gaiaEvaluator.getStats());
+});
+
+// ── Semantic Memory ────────────────────────────────────────────────────────────
+
+router.get("/memory/semantic/stats", (_req, res) => {
+  res.json(semanticMemory.getStats());
+});
+
+router.get("/memory/semantic/search", (req, res) => {
+  const query = String(req.query.q || "");
+  const type = req.query.type as any;
+  const limit = parseInt(String(req.query.limit || "10"), 10);
+  if (!query) { res.status(400).json({ error: "q مطلوب" }); return; }
+  const results = semanticMemory.search(query, { type, limit });
+  res.json({ results, total: results.length });
+});
+
+router.post("/memory/semantic/store", (req, res) => {
+  const { type, subject, content, confidence, source, tags } = req.body;
+  if (!type || !subject || !content) {
+    res.status(400).json({ error: "type و subject و content مطلوبة" });
+    return;
+  }
+  const entry = semanticMemory.store_entry({ type, subject, content, confidence, source, tags });
+  res.json({ success: true, entry });
+});
+
+router.get("/memory/semantic/by-type/:type", (req, res) => {
+  const entries = semanticMemory.getByType(req.params.type as any, 30);
+  res.json({ entries, total: entries.length });
+});
+
+// ── Procedural Memory ──────────────────────────────────────────────────────────
+
+router.get("/memory/procedural/stats", (_req, res) => {
+  res.json(proceduralMemory.getStats());
+});
+
+router.get("/memory/procedural/skills", (_req, res) => {
+  const skills = proceduralMemory.getAllSkills();
+  res.json({ skills, total: skills.length });
+});
+
+router.get("/memory/procedural/find", (req, res) => {
+  const task = String(req.query.task || "");
+  if (!task) { res.status(400).json({ error: "task مطلوب" }); return; }
+  const matches = proceduralMemory.findRelevantSkills(task, 5);
+  res.json({ matches, total: matches.length });
 });
 
 export default router;
